@@ -13,7 +13,6 @@ from tdoa import tdoa
 
 
 def correct_fo(signal, PPM, fRS, fUS, samplingRate=2e6):
-
     """
     Correct frequency offset of IQ signal
 
@@ -26,10 +25,10 @@ def correct_fo(signal, PPM, fRS, fUS, samplingRate=2e6):
     """
 
     phi = PPM * 1e-6
-    Ts = 1/samplingRate
+    Ts = 1 / samplingRate
 
-    t = Ts/(1+phi) * np.arange(len(signal))
-    up = np.size(np.arange(0,np.max(t),Ts))
+    t = Ts / (1 + phi) * np.arange(len(signal))
+    up = np.size(np.arange(0, np.max(t), Ts))
     down = np.size(t)
     chunk_length = len(signal) // 3
 
@@ -39,13 +38,13 @@ def correct_fo(signal, PPM, fRS, fUS, samplingRate=2e6):
     c_0_corrected = c_0 * np.exp(t_0 * (-1j * 2 * np.pi * phi * fRS))
 
     # Second chunk
-    c_1 = signal[chunk_length:chunk_length*2]
-    t_1 = t[chunk_length:chunk_length*2]
+    c_1 = signal[chunk_length : chunk_length * 2]
+    t_1 = t[chunk_length : chunk_length * 2]
     c_1_corrected = c_1 * np.exp(t_1 * (-1j * 2 * np.pi * phi * fUS))
 
     # Third chunk
-    c_2 = signal[chunk_length*2:]
-    t_2 = t[chunk_length*2:]
+    c_2 = signal[chunk_length * 2 :]
+    t_2 = t[chunk_length * 2 :]
     c_2_corrected = c_2 * np.exp(t_2 * (-1j * 2 * np.pi * phi * fRS))
 
     # Resampling phase
@@ -54,7 +53,6 @@ def correct_fo(signal, PPM, fRS, fUS, samplingRate=2e6):
 
 
 def correct_fo_ltess(signal, PPM, fS=806e6, samplingRate=1.92e6):
-
     """
     Correct frequency offset of IQ signal (LTE frequency)
 
@@ -67,10 +65,10 @@ def correct_fo_ltess(signal, PPM, fS=806e6, samplingRate=1.92e6):
     """
 
     phi = PPM * 1e-6
-    Ts = 1/samplingRate
+    Ts = 1 / samplingRate
 
-    t = Ts/(1+phi) * np.arange(len(signal))
-    up = np.size(np.arange(0,np.max(t),Ts))
+    t = Ts / (1 + phi) * np.arange(len(signal))
+    up = np.size(np.arange(0, np.max(t), Ts))
     down = np.size(t)
 
     signal = signal * np.exp(t * (-1j * 2 * np.pi * phi * fS))
@@ -119,9 +117,7 @@ def pytdoa(config):
     samples = {}
     for sensor in sensors:
         sname = sensor["name"]
-        fname_tdoa = (
-            f"{directory}/{sname}/E{filenum}-{int(fRS_MHz)}e6_{int(fUS_MHz)}e6-localization.dat"
-        )
+        fname_tdoa = f"{directory}/{sname}/E{filenum}-{int(fRS_MHz)}e6_{int(fUS_MHz)}e6-localization.dat"
         fname_ltess = f"{directory}/{sname}/E{filenum}-ltess.dat"
 
         tdoa_iq = spec_load(fname_tdoa)
@@ -135,9 +131,6 @@ def pytdoa(config):
 
         # Clock correction
         samples[sname] = correct_fo(tdoa_iq, PPM, fRS, fUS, samplingRate=sr_tdoa)
-        
-
-
 
     return np.array([us_lat, us_lon, us_alt])
 
