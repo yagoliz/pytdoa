@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 
+import itertools
 import json
 
 import numpy as np
-from scipy.signal import resample_poly
+from scipy.signal import resample
 
 from geodesy import geodesy
 from ltess import ltess
@@ -49,7 +50,7 @@ def correct_fo(signal, PPM, fRS, fUS, samplingRate=2e6):
 
     # Resampling phase
     signal_corrected = np.concatenate((c_0_corrected, c_1_corrected, c_2_corrected))
-    return resample_poly(signal_corrected, up, down)
+    return resample(signal_corrected, up)
 
 
 def correct_fo_ltess(signal, PPM, fS=806e6, samplingRate=1.92e6):
@@ -74,7 +75,7 @@ def correct_fo_ltess(signal, PPM, fS=806e6, samplingRate=1.92e6):
     signal = signal * np.exp(t * (-1j * 2 * np.pi * phi * fS))
 
     # Resampling phase
-    return resample_poly(signal, up, down)
+    return resample(signal, up)
 
 
 def pytdoa(config):
@@ -117,7 +118,7 @@ def pytdoa(config):
     samples = {}
     for sensor in sensors:
         sname = sensor["name"]
-        fname_tdoa = f"{directory}/{sname}/E{filenum}-{int(fRS_MHz)}e6_{int(fUS_MHz)}e6-localization.dat"
+        fname_tdoa = f"{directory}/{sname}/E{filenum}-{int(fRS_MHz)}_{int(fUS_MHz)}-localization.dat"
         fname_ltess = f"{directory}/{sname}/E{filenum}-ltess.dat"
 
         tdoa_iq = spec_load(fname_tdoa)
@@ -126,11 +127,14 @@ def pytdoa(config):
         # Estimate Clock drift using the LTESS-Track tool
         (PPM, delta_f, confidence) = ltess.ltess(ltess_iq, resample_factor=60)
 
-        cc = correct_fo_ltess(ltess_iq, PPM)
-        (PPM2, _, _) = ltess.ltess(cc, resample_factor=60)
-
         # Clock correction
         samples[sname] = correct_fo(tdoa_iq, PPM, fRS, fUS, samplingRate=sr_tdoa)
+
+    # Get combinations and compute TDOAs per pair
+    combinations = itertools.combinations(np.arange(len(sensors)))
+    tdoa_list = []
+
+    
 
     return np.array([us_lat, us_lon, us_alt])
 

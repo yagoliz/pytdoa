@@ -21,7 +21,7 @@
         "samples_per_slice": 1000000,
         "sample_rate": 2000000,
         "sample_rate_ltess": 1920000,
-        "filenum": 0,
-        "folder": "/home/ygglc/desktop/phd/research/localization/core/localization-tdoa/data/real_tests/20210531-2300"
+        "filenum": 1,
+        "folder": "/home/ygglc/desktop/phd/research/localization/core/localization-tdoa/data/real_tests/20211029"
     }
 }

@@ -2,7 +2,10 @@ from dataclasses import dataclass
 
 import numpy as np
 
+# Speed of light
+c = 299792458
 
+# Geodetic class
 @dataclass
 class geoC:
     # Basic Earth model constants
