@@ -1,8 +1,6 @@
 {
     "transmitters": {
         "unknown": {
-            "coord": [40.420570, -3.664179],
-            "height": 600,
             "freq": 208.0
         },
         "reference": {
@@ -21,7 +19,8 @@
         "samples_per_slice": 1000000,
         "sample_rate": 2000000,
         "sample_rate_ltess": 1920000,
+        "correct": true,
         "filenum": 1,
-        "folder": "/home/ygglc/desktop/phd/research/localization/core/localization-tdoa/data/real_tests/20211029"
+        "folder": "/home/ygglc/desktop/phd/research/localization/core/localization-tdoa/data/real_tests/20211012"
     }
 }

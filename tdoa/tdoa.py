@@ -1,8 +1,8 @@
 
 import numpy as np
-from scipy.signal import correlation_lags, detrend
+from scipy.signal import correlate, correlation_lags, detrend
 
-from geodesy import c
+from geodesy.geodesy import SPEED_OF_LIGHT as c
 
 def correlate_arrays(s1, s2, normalize=True):
     """
@@ -12,7 +12,7 @@ def correlate_arrays(s1, s2, normalize=True):
         s1 = (s1 - np.mean(s1))/(np.std(s1)*len(s1))
         s2 = (s2 - np.mean(s2))/(np.std(s2))
 
-    acor = np.correlate(s1, s2, mode="full")
+    acor = correlate(s1, s2, mode="full")
     lags = correlation_lags(len(s1), len(s2), mode="full")
     
     return (acor, lags)
@@ -50,7 +50,7 @@ def tdoa(
     s1,
     s2,
     rx_diff,
-    signal_bandwidth,
+    signal_bandwidth=2e6,
     samples_per_frequency=1000000,
     guard=0.7,
     sample_rate=2e6,
@@ -82,7 +82,7 @@ def tdoa(
     ## Correlations
     # First, we upsample all signals
     if interpol > 1:
-        x = np.linspace(0,span,span/interpol)
+        x = np.linspace(0, span, span*interpol, endpoint=False)
         xp = np.arange(0,span)
 
         s11 = np.interp(x,xp,s11)
@@ -113,7 +113,7 @@ def tdoa(
 
     # Now compute the TDOAs
     if abs(mlag1 - mlag3) > 2:
-        ("[WARNING] Delay between Reference Chunks is greater than 2 samples")
+        print("[WARNING] Delay between Reference Chunks is greater than 2 samples")
     
     mlag = (mlag1 + mlag3) / 2
     rx_diff_samples = rx_diff / c * sample_rate

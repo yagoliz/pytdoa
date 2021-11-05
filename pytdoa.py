@@ -93,15 +93,14 @@ def pytdoa(config):
     # Unknown transmitter
     fUS_MHz = config["transmitters"]["unknown"]["freq"]
     fUS = fUS_MHz * 1e6
-    us_lat = config["transmitters"]["unknown"]["coord"][0]
-    us_lon = config["transmitters"]["unknown"]["coord"][1]
-    us_alt = config["transmitters"]["unknown"]["height"]
 
     # Reference transmitter
     fRS_MHz = config["transmitters"]["reference"]["freq"]
     fRS = fRS_MHz * 1e6
     rs_lat = config["transmitters"]["reference"]["coord"][0]
     rs_lon = config["transmitters"]["reference"]["coord"][1]
+    rs_alt = config["transmitters"]["reference"]["height"]
+    rs_llh = np.array([rs_lat, rs_lon, rs_alt]).reshape(1,3)
 
     # Sensor configurations
     sr_tdoa = config["config"]["sample_rate"]
@@ -111,12 +110,21 @@ def pytdoa(config):
     filenum = config["config"]["filenum"]
     NUM_SENSORS = len(sensors)
 
+    # Correct the drift of the RTL-SDRs (requires knowing the drift in PPM)
+    correct = config["config"]["correct"]
+
     # Arrays to hold important things
-    distances_rs = np.zeros((NUM_SENSORS, 1))
+    distances_rs = np.empty(0)
 
     # Load data and prepare it
     samples = {}
     for sensor in sensors:
+        # Computing the distance to the Ref tX
+        sensor_llh = np.array([sensor["coordinates"][0], sensor["coordinates"][1], sensor["height"]]).reshape(1,3)
+        dist = geodesy.dist3fromllh(rs_llh, sensor_llh)
+        distances_rs = np.append(distances_rs,[dist])
+
+        # Loading IQ data
         sname = sensor["name"]
         fname_tdoa = f"{directory}/{sname}/E{filenum}-{int(fRS_MHz)}_{int(fUS_MHz)}-localization.dat"
         fname_ltess = f"{directory}/{sname}/E{filenum}-ltess.dat"
@@ -124,19 +132,30 @@ def pytdoa(config):
         tdoa_iq = spec_load(fname_tdoa)
         ltess_iq = spec_load(fname_ltess)
 
-        # Estimate Clock drift using the LTESS-Track tool
-        (PPM, delta_f, confidence) = ltess.ltess(ltess_iq, resample_factor=60)
-
-        # Clock correction
-        samples[sname] = correct_fo(tdoa_iq, PPM, fRS, fUS, samplingRate=sr_tdoa)
+        if correct:
+            # Estimate Clock drift using the LTESS-Track tool
+            (PPM, delta_f, confidence) = ltess.ltess(ltess_iq, resample_factor=60)
+            # Clock correction
+            samples[sname] = correct_fo(tdoa_iq, PPM, fRS, fUS, samplingRate=sr_tdoa)
+        else:
+            samples[sname] = tdoa_iq
 
     # Get combinations and compute TDOAs per pair
-    combinations = itertools.combinations(np.arange(len(sensors)))
-    tdoa_list = []
-
+    combinations = itertools.combinations(np.arange(len(sensors)),2)
+    tdoa_list = np.empty(0)
     
+    for combination in combinations:
+        i, j = combination[0], combination[1]
 
-    return np.array([us_lat, us_lon, us_alt])
+        name_i = sensors[i]["name"]
+        name_j = sensors[j]["name"]
+        rx_diff = distances_rs[i] - distances_rs[j]
+        
+        tdoa_ij = tdoa.tdoa(samples[name_i], samples[name_j], rx_diff, interpol=1)
+        tdoa_list = np.append(tdoa_list,[tdoa_ij['tdoa_m_2']])
+
+
+    return np.array([0.0, 0.0, 0.0])
 
 
 if __name__ == "__main__":
