@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "pytdoa"
+version = "0.1.0"
+description = "TDOA localization for low cost sensors"
+authors = ["Yago Lizarribar <yago.lizarribar@imdea.org>"]
+license = "GPL"
+
+[tool.poetry.dependencies]
+python = ">=3.8,<3.11"
+numpy = "^1.22.2"
+scipy = "^1.8.0"
+pandas = "^1.4.1"
+sklearn = "^0.0"
+matplotlib = "^3.5.1"
+jax = {extras = ["cpu"], version = "^0.3.1"}
+
+[tool.poetry.dev-dependencies]
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

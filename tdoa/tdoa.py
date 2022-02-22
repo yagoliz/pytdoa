@@ -1,20 +1,21 @@
-
 import numpy as np
 from scipy.signal import correlate, correlation_lags, detrend
+from scipy.interpolate import interp1d
 
 from geodesy.geodesy import SPEED_OF_LIGHT as c
+
 
 def correlate_arrays(s1, s2, normalize=True):
     """
     Given 2 signals, computes the cross correlation after applying normalization
     """
     if normalize:
-        s1 = (s1 - np.mean(s1))/(np.std(s1)*len(s1))
-        s2 = (s2 - np.mean(s2))/(np.std(s2))
+        s1 = (s1 - np.mean(s1)) / (np.std(s1) * len(s1))
+        s2 = (s2 - np.mean(s2)) / (np.std(s2))
 
     acor = correlate(s1, s2, mode="full")
     lags = correlation_lags(len(s1), len(s2), mode="full")
-    
+
     return (acor, lags)
 
 
@@ -24,10 +25,14 @@ def correlate_iq(s1, s2, method="dphase"):
     """
 
     if method == "iq":
-        pass
+        (acor, lags) = correlate_arrays(s1, s2)
+        acor = np.abs(acor)
 
     elif method == "abs":
-        pass
+        a1 = np.abs(s1)
+        a2 = np.abs(s2)
+
+        (acor, lags) = correlate_arrays(a1, a2)
 
     elif method == "dphase":
         # Obtain the phase derivative
@@ -39,7 +44,7 @@ def correlate_iq(s1, s2, method="dphase"):
         d2 = detrend(d2)
 
         (acor, lags) = correlate_arrays(d1, d2)
-              
+
     else:
         raise RuntimeError("Unsupported Correlation Type")
 
@@ -50,13 +55,14 @@ def tdoa(
     s1,
     s2,
     rx_diff,
-    signal_bandwidth=2e6,
+    signal_bandwidth_rs=2e6,
+    signal_bandwidth_us=2e6,
     samples_per_frequency=1000000,
     guard=0.7,
     sample_rate=2e6,
     interpol=1,
     corr_type="dphase",
-    report=1
+    report=1,
 ):
     """
     Computes the TDOA between 2 signals using a Reference Receiver for synchronization
@@ -65,89 +71,147 @@ def tdoa(
     ## Signal preparation
     # Compute the points where we'll take the slices of the 3 parts of the signal
     center = round(0.5 * samples_per_frequency)
-    left = center - round(0.5*guard*samples_per_frequency)
-    right = center + round(0.5*guard*samples_per_frequency)
-    span = right - left
+    left = center - round(0.7 * guard * samples_per_frequency)
+    right = center + round(0.7 * guard * samples_per_frequency)
+
+    # Valid samples
+    valid = 20
 
     # Signal 1 slicing
     s11 = s1[left:right]
-    s12 = s1[samples_per_frequency+left:samples_per_frequency+right]
-    s13 = s1[2*samples_per_frequency+left:2*samples_per_frequency+right]
+    s12 = s1[samples_per_frequency + left : samples_per_frequency + right]
+    s13 = s1[2 * samples_per_frequency + left : 2 * samples_per_frequency + right]
 
     # Signal 2 slicing
     s21 = s2[left:right]
-    s22 = s2[samples_per_frequency+left:samples_per_frequency+right]
-    s23 = s2[2*samples_per_frequency+left:2*samples_per_frequency+right]
+    s22 = s2[samples_per_frequency + left : samples_per_frequency + right]
+    s23 = s2[2 * samples_per_frequency + left : 2 * samples_per_frequency + right]
 
     ## Correlations
-    # First, we upsample all signals
-    if interpol > 1:
-        x = np.linspace(0, span, span*interpol, endpoint=False)
-        xp = np.arange(0,span)
-
-        s11 = np.interp(x,xp,s11)
-        s12 = np.interp(x,xp,s12)
-        s13 = np.interp(x,xp,s13)
-        
-        s21 = np.interp(x,xp,s21)
-        s22 = np.interp(x,xp,s22)
-        s23 = np.interp(x,xp,s23)
 
     # First chunk correlation
     [acor1, lags1] = correlate_iq(s11, s21, method=corr_type)
+
     midx1 = np.argmax(acor1)
     mcor1 = acor1[midx1]
-    mlag1 = lags1[midx1]/interpol
+    mlag1 = lags1[midx1]
+    
+    # We upsample the acor result
+    if interpol > 1:
+        N = (2 * valid) * interpol
+        lags1_interpolated = np.linspace(lags1[midx1-valid], lags1[midx1+valid]-1, N, endpoint=False)
+
+        # Create interpolator object
+        interpolant = interp1d(lags1[midx1-valid:midx1+valid], acor1[midx1-valid:midx1+valid], kind='cubic')
+        acor1_interpolated = interpolant(lags1_interpolated)
+
+        midx1_interpolated = np.argmax(acor1_interpolated)
+        mcor1_interpolated = acor1_interpolated[midx1_interpolated]
+        mlag1_interpolated = lags1_interpolated[midx1_interpolated]
+    else:
+        midx1_interpolated = midx1
+        mcor1_interpolated = mcor1
+        mlag1_interpolated = mlag1
+
 
     # Second chunk correlation
     [acor2, lags2] = correlate_iq(s12, s22, method=corr_type)
     midx2 = np.argmax(acor2)
     mcor2 = acor2[midx2]
-    mlag2 = lags2[midx2]/interpol
+    mlag2 = lags2[midx2]
+
+    if interpol > 1:
+        lags2_interpolated = np.linspace(lags2[midx2-valid], lags2[midx2+valid]-1, N, endpoint=False)
+
+        # Create interpolator object
+        interpolant = interp1d(lags2[midx2-valid:midx2+valid], acor2[midx2-valid:midx2+valid], kind='cubic')
+        acor2_interpolated = interpolant(lags2_interpolated)
+
+        midx2_interpolated = np.argmax(acor2_interpolated)
+        mcor2_interpolated = acor2_interpolated[midx2_interpolated]
+        mlag2_interpolated = lags2_interpolated[midx2_interpolated]
+    else:
+        midx2_interpolated = midx2
+        mcor2_interpolated = mcor2
+        mlag2_interpolated = mlag2
 
     # Third chunk correlation
     [acor3, lags3] = correlate_iq(s13, s23, method=corr_type)
     midx3 = np.argmax(acor3)
     mcor3 = acor3[midx3]
-    mlag3 = lags3[midx3]/interpol
+    mlag3 = lags3[midx3]
+
+    if interpol > 1:
+        lags3_interpolated = np.linspace(lags3[midx3-valid], lags3[midx3+valid]-1, N, endpoint=False)
+
+        # Create interpolator object
+        interpolant = interp1d(lags3[midx3-valid:midx3+valid], acor2[midx3-valid:midx3+valid], kind='cubic')
+        acor3_interpolated = interpolant(lags3_interpolated)
+
+        midx3_interpolated = np.argmax(acor3_interpolated)
+        mcor3_interpolated = acor3_interpolated[midx3_interpolated]
+        mlag3_interpolated = lags3_interpolated[midx3_interpolated]
+    else:
+        midx3_interpolated = midx3
+        mcor3_interpolated = mcor3
+        mlag3_interpolated = mlag3
 
     # Now compute the TDOAs
     if abs(mlag1 - mlag3) > 2:
         print("[WARNING] Delay between Reference Chunks is greater than 2 samples")
-    
+
     mlag = (mlag1 + mlag3) / 2
+    mlag_interpolated = (mlag1_interpolated + mlag3_interpolated) / 2
     rx_diff_samples = rx_diff / c * sample_rate
 
     tdoa_s = mlag2 - mlag + rx_diff_samples
+    tdoa_s_interpolated = mlag2_interpolated - mlag_interpolated + rx_diff_samples
     tdoa_s_2 = mlag2 - mlag1 + rx_diff_samples
+    tdoa_s_2_interpolated = mlag2_interpolated - mlag1_interpolated + rx_diff_samples
     tdoa_m = tdoa_s / sample_rate * c
+    tdoa_m_interpolated = tdoa_s_interpolated / sample_rate * c
     tdoa_m_2 = tdoa_s_2 / sample_rate * c
+    tdoa_m_2_interpolated = tdoa_s_2_interpolated / sample_rate * c
 
     if report > 0:
-        print(' ')
-        print('CORRELATION RESULTS')
-        print(f'Raw Delay 1 (ref) in samples: {mlag1}. Reliability (0-1): {mcor1}')
-        print(f'Raw Delay 2 (unk) in samples: {mlag2}. Reliability (0-1): {mcor2}')
-        print(f'Raw Delay 3 (chk) in samples: {mlag3}. Reliability (0-1): {mcor3}')
-        print(f'Merged Delay (1 & 3) in samples: {mlag}')
+        print(" ")
+        print("[INFO] MULTILATERATION: CORRELATION RESULTS")
+        print(f"\tRaw Delay 1 (ref) in samples (Regular / Upsampled): {mlag1}/{mlag1_interpolated:.1f}. Reliability (0-1): {mcor1:.2f}/{mcor1_interpolated:.2f}")
+        print(f"\tRaw Delay 2 (unk) in samples (Regular / Upsampled): {mlag2}/{mlag2_interpolated:.1f}. Reliability (0-1): {mcor2:.2f}/{mcor2_interpolated:.2f}")
+        print(f"\tRaw Delay 3 (chk) in samples (Regular / Upsampled): {mlag3}/{mlag3_interpolated:.1f}. Reliability (0-1): {mcor3:.2f}/{mcor3_interpolated:.2f}")
+        print(f"\tMerged Delay (1 & 3) in samples (Regular / Upsampled): {mlag}/{mlag_interpolated:.1f}")
 
-        print('REFERENCE TRANSMITTER')
-        print(f'Distance to Reference TX [m]: {rx_diff}')
-        print(f'Distance to Reference TX [samples]: {rx_diff_samples}')
+        print("[INFO] MULTILATERATION: REFERENCE TRANSMITTER")
+        print(f"\tDistance to Reference TX [m]: {rx_diff}")
+        print(f"\tDistance to Reference TX [samples]: {rx_diff_samples}")
 
-        print('UNKNOWN TRANSMITTER')
-        print(f'TDOA to Unknown TX (Merged) [m]: {tdoa_s}')
-        print(f'TDOA to Unknown TX (Merged) [samples]: {tdoa_m}')
-        print(f'TDOA to Unknown TX (Unmerged) [m]: {tdoa_s_2}')
-        print(f'TDOA to Unknown TX (Unmerged) [samples]: {tdoa_m_2}')
-        print(f'Reliability (Minimum correlation value): {np.min([mcor1, mcor2, mcor3])}')
+        print("[INFO] MULTILATERATION: UNKNOWN TRANSMITTER")
+        print("------ Regular")
+        print(f"\tTDOA to Unknown TX (Merged) [m]: {tdoa_s}")
+        print(f"\tTDOA to Unknown TX (Merged) [samples]: {tdoa_m:.2f}")
+        print(f"\tTDOA to Unknown TX (Unmerged) [m]: {tdoa_s_2}")
+        print(f"\tTDOA to Unknown TX (Unmerged) [samples]: {tdoa_m_2:.2f}")
+        print("------ Upsampled")
+        print(f"\tTDOA to Unknown TX (Merged) [m]: {tdoa_s_interpolated:.1f}")
+        print(f"\tTDOA to Unknown TX (Merged) [samples]: {tdoa_m_interpolated:.2f}")
+        print(f"\tTDOA to Unknown TX (Unmerged) [m]: {tdoa_s_2_interpolated:.1f}")
+        print(f"\tTDOA to Unknown TX (Unmerged) [samples]: {tdoa_m_2_interpolated:.2f}")
+        print(
+            f"\t- Reliability (Minimum correlation value): {np.min([mcor1, mcor2, mcor3])}"
+        )
+        print(
+            f"\t- Reliability Upsampled (Minimum correlation value): {np.min([mcor1_interpolated, mcor2_interpolated, mcor3_interpolated]):.2f}"
+        )
 
     # Return dict with most important results
     return {
-        'tdoa_s': tdoa_s,
-        'tdoa_s_2': tdoa_s_2,
-        'tdoa_m': tdoa_m,
-        'tdoa_m_2': tdoa_m_2,
-        'corr_val': np.min([mcor1, mcor2, mcor3])
+        "tdoa_s": tdoa_s,
+        "tdoa_s_2": tdoa_s_2,
+        "tdoa_m": tdoa_m,
+        "tdoa_m_2": tdoa_m_2,
+        "tdoa_s_i": tdoa_s_interpolated,
+        "tdoa_s_2_i": tdoa_s_2_interpolated,
+        "tdoa_m_i": tdoa_m_interpolated,
+        "tdoa_m_2_i": tdoa_m_2_interpolated,
+        "corr_val": np.min([mcor1, mcor2, mcor3]),
     }
-
