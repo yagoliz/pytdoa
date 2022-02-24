@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
 
+# Compute positions using the TDOA/MLAT algorithm
+# Author: Yago Lizarribar
+# Email: yago.lizarribar@imdea.org
+
+import argparse
 import itertools
 import json
+from turtle import shape
 
 import numpy as np
 import pandas as pd
 from scipy.signal import resample
-
-import jax.numpy as jnp
-from jax.scipy.optimize import minimize
+import scipy.optimize as optimize
 
 from geodesy import geodesy
 from ltess import ltess
@@ -82,6 +86,136 @@ def correct_fo_ltess(signal, PPM, fS=806e6, samplingRate=1.92e6):
     return resample(signal, up)
 
 
+def linoptim(sensors, tdoas):
+    """
+    Obtain the position by linear methods
+
+    Parameters:
+    sensors: DataFrame with 'latitude', 'longitude', 'height' parameters
+    tdoas: array of tdoa values of shape(n-1,1)
+
+    Returns:
+    np.array([lat,lon]) with the resulting latitude and longitude
+    """
+
+    sensors_llh = sensors[["latitude", "longitude", "height"]].to_numpy()
+    reference_c = np.mean(sensors_llh, axis=0)
+
+    sensors_xyz = geodesy.latlon2xy(
+        sensors_llh[:, 0], sensors_llh[:, 1], reference_c[0], reference_c[1]
+    )
+
+    if sensors.shape[0] > 3:
+        res = lls.lls(sensors_xyz, tdoas)
+    else:
+        res = exact.fang(sensors_xyz, tdoas)
+
+    return geodesy.xy2latlon(res[0], res[1], reference_c[0], reference_c[1]).squeeze()
+
+
+def brutefoptim(
+    sensors,
+    tdoas,
+    combinations,
+    ltrange=2,
+    lnrange=2,
+    step=0.05,
+    epsilon=1e-4,
+    maxiter=10,
+    workers=1,
+):
+    """
+    Obtain the position by brute force
+
+    Parameters:
+    sensors: DataFrame with 'latitude', 'longitude', 'height' parameters
+    tdoas: array of tdoa values of shape(n-1,1)
+    combinations: list with sensor combinations when computing tdoa pairs
+
+    Returns:
+    np.array([lat,lon, height]) with the resulting latitude and longitude
+    """
+
+    sensors_llh = sensors[["latitude", "longitude", "height"]].to_numpy()
+    X0 = np.mean(sensors_llh, axis=0)
+    altitude = X0[2]
+
+    sensors_ecef = geodesy.llh2ecef(
+        sensors[["latitude", "longitude", "height"]].to_numpy()
+    )
+    sensors_mean = np.mean(sensors_ecef, axis=0)
+
+    optimfun = lambda X: nlls.nlls_llh(
+        X, altitude, sensors_ecef - sensors_mean, sensors_mean, tdoas, combinations
+    )
+
+    Xr = np.array([X0[0], X0[1]])
+    F_prev = None
+    lt = ltrange
+    ln = lnrange
+    st = step
+    Ns = int(2 * ltrange / step)
+    for i in range(maxiter):
+        llrange = (slice(Xr[0] - lt, Xr[0] + lt, st), slice(Xr[1] - ln, Xr[1] + ln, st))
+
+        summary = optimize.brute(
+            optimfun, llrange, full_output=True, finish=None, workers=workers
+        )
+
+        # We update all the values for the next iteration
+        if F_prev is None:
+            Xr = summary[0]
+            F_prev = summary[1]
+
+            lt = lt * 0.1
+            ln = ln * 0.1
+            st = 2 * lt / Ns
+        else:
+            Xr = summary[0]
+            F = summary[1]
+
+            if np.abs((F - F_prev) / F) < epsilon:
+                return Xr
+
+            F_prev = F
+
+            lt = lt * 0.1
+            ln = ln * 0.1
+            st = 2 * lt / Ns
+
+    print("[WARNING] OPTIMIZATION: Reached maximum number of iterations")
+    return Xr
+
+
+def nonlinoptim(sensors, tdoas, combinations):
+    """
+    Obtain the position by non linear methods
+
+    Parameters:
+    sensors: DataFrame with 'latitude', 'longitude', 'height' parameters
+    tdoas: array of tdoa values of shape(n-1,1)
+
+    Returns:
+    np.array([lat,lon, height]) with the resulting latitude and longitude
+    """
+
+    sensors_ecef = geodesy.llh2ecef(
+        sensors[["latitude", "longitude", "height"]].to_numpy()
+    )
+    sensors_mean = np.mean(sensors_ecef, axis=0)
+
+    sensors_ecef = sensors_ecef - sensors_mean
+    optimfun = lambda X: nlls.nlls(X, sensors_ecef, tdoas, combinations)
+
+    # Minimization routine
+    X0 = np.zeros(shape=(3, 1))
+
+    summary = optimize.minimize(optimfun, X0, method="BFGS")
+
+    res = np.array(summary.x, copy=False).reshape(-1, 3)
+    return geodesy.ecef2llh(res + sensors_mean).squeeze()
+
+
 def pytdoa(config):
     """
     Obtain the position
@@ -106,35 +240,41 @@ def pytdoa(config):
     rs_alt = config["transmitters"]["reference"]["height"]
     rs_llh = np.array([rs_lat, rs_lon, rs_alt]).reshape(1, 3)
 
-    # TDOA estimation
-    try:
-        corr_type = config["config"]["corr_type"]
-    except:
-        corr_type = "dphase"
-
-    try:
-        interpol = config["config"]["interpol"]
-    except:
-        interpol = 1
-
     # Sensor configurations
     sr_tdoa = config["config"]["sample_rate"]
     sr_ltess = config["config"]["sample_rate_ltess"]
     sensors = pd.DataFrame(config["sensors"])
-    sensors[['latitude','longitude']] = sensors.coordinates.to_list()
-    sensors = sensors.drop(['coordinates'],axis=1)
+    sensors[["latitude", "longitude"]] = sensors.coordinates.to_list()
+    sensors = sensors.drop(["coordinates"], axis=1)
     directory = config["config"]["folder"]
     filenum = config["config"]["filenum"]
     NUM_SENSORS = len(sensors)
+
+    # TDOA estimation
+    corr_type = config["config"].get("corr_type", "dphase")
+    interpol = config["config"].get("interpol", 1)
+    bw_rs = config["transmitters"]["reference"].get("bw", sr_tdoa)
+    bw_us = config["transmitters"]["unknown"].get("bw", sr_tdoa)
+
+    # Design the filter taps for all chunks
+    taps_rs, taps_us = None, None
+    if bw_rs < sr_tdoa:
+        taps_rs = tdoa.design_filt(bw_rs, sr_tdoa)
+        print(
+            f"[INFO] PYTDOA: Filter for reference signal of bandwidth {bw_rs:.2f} created"
+        )
+
+    if bw_us < sr_tdoa:
+        taps_us = tdoa.design_filt(bw_us, sr_tdoa)
+        print(
+            f"[INFO] PYTDOA: Filter for targe signal of bandwidth {bw_us:.2f} created"
+        )
 
     # Correct the drift of the RTL-SDRs (requires knowing the drift in PPM)
     correct = config["config"]["correct"]
 
     # Return the accurate position from NLLS
-    try:
-        accurate = config["config"]["accurate"]
-    except:
-        accurate = False
+    method = config["config"].get("method", "linear")
 
     # Arrays to hold important things
     distances_rs = np.empty(0)
@@ -149,14 +289,13 @@ def pytdoa(config):
             [sensor["latitude"], sensor["longitude"], sensor["height"]]
         ).reshape(1, 3)
         dist = geodesy.dist3fromllh(rs_llh, sensor_llh)
-        sensors.at[i,'ref_dist'] = dist
+        sensors.at[i, "ref_dist"] = dist
 
         # Compute ECEF coordinates per sensor
         ecef = geodesy.llh2ecef(sensor_llh).squeeze()
-        sensors.at[i,'x'] = ecef[0]
-        sensors.at[i,'y'] = ecef[1]
-        sensors.at[i,'z'] = ecef[2]
-
+        sensors.at[i, "x"] = ecef[0]
+        sensors.at[i, "y"] = ecef[1]
+        sensors.at[i, "z"] = ecef[2]
 
         # Loading IQ data
         sname = sensor["name"]
@@ -177,68 +316,67 @@ def pytdoa(config):
     # Get combinations and compute TDOAs per pair
     combinations = itertools.combinations(np.arange(len(sensors)), 2)
 
-    combination_list = np.empty((0,2), dtype=int)
+    combination_list = np.empty((0, 2), dtype=int)
     tdoa_list = np.empty(0)
 
     for combination in combinations:
         i, j = combination[0], combination[1]
 
-        combination_list = np.vstack((combination_list,[combination[0],combination[1]]))
+        combination_list = np.vstack(
+            (combination_list, [combination[0], combination[1]])
+        )
 
         name_i = sensors.iloc[i]["name"]
         name_j = sensors.iloc[j]["name"]
         rx_diff = sensors.iloc[i]["ref_dist"] - sensors.iloc[j]["ref_dist"]
 
-        tdoa_ij = tdoa.tdoa(samples[name_i], samples[name_j], rx_diff, interpol=interpol, corr_type=corr_type)
+        tdoa_ij = tdoa.tdoa(
+            samples[name_i],
+            samples[name_j],
+            rx_diff,
+            interpol=interpol,
+            corr_type=corr_type,
+            taps_rs=taps_rs,
+            taps_us=taps_us,
+        )
         tdoa_list = np.append(tdoa_list, [tdoa_ij["tdoa_m_i"]])
 
     # Optimization part
-    sensors_llh = sensors[['latitude','longitude','height']].to_numpy()
-    reference_c = np.mean(sensors_llh, axis=0)
+    match method:
+        case "linear":
+            result = linoptim(sensors, tdoa_list[: NUM_SENSORS - 1])
 
-    # We start by a simple Linear Optimization
-    # We need to convert latitude,longitude pairs to their 2D representations
-    sensors_xyz = geodesy.latlon2xy(sensors_llh[:,0], sensors_llh[:,1], reference_c[0], reference_c[1])
+        case "brute":
+            result = brutefoptim(sensors, tdoa_list, combination_list)
 
-    if NUM_SENSORS > 3:
-        result_lls = lls.lls(sensors_xyz, tdoa_list[:NUM_SENSORS-1])
-    else:
-        result_lls = exact.fang(sensors_xyz, tdoa_list[:NUM_SENSORS-1])
-    
-    result = geodesy.xy2latlon(result_lls[0], result_lls[1], reference_c[0], reference_c[1]).squeeze()
+        case "nonlinear":
+            result = nonlinoptim(sensors, tdoa_list, combination_list)
 
-    # Non-Linear optimization if flag is set
-    if accurate:
-        sensors_ecef = geodesy.llh2ecef(sensors[['latitude','longitude','height']].to_numpy())
-        sensors_mean = np.mean(sensors_ecef, axis=0)
+        case _:
+            raise RuntimeError("Unsupported optimization method")
 
-        sensors_ecef = sensors_ecef - sensors_mean
-
-        # Let's create our lambda for the optimization
-        sensors_ecef_jnp = jnp.asarray(sensors_ecef)
-        tdoas_jnp = jnp.asarray(tdoa_list)
-        combinations_jnp = jnp.asarray(combination_list)
-        optimfun = lambda X: nlls.nlls(X, sensors_ecef_jnp, tdoas_jnp, combinations_jnp)
-
-        # Minimization routing
-        X0 = geodesy.llh2ecef(np.append(result, reference_c[2]).reshape(1,3)) - sensors_mean
-        X0_jnp = jnp.asarray(X0).reshape(-1,)
-        res = minimize(optimfun, X0_jnp, method='BFGS')[0]
-
-        res_np = np.array(res, copy=False).reshape(-1,3)
-        result_accurate = geodesy.ecef2llh(res_np + sensors_mean).squeeze()
-
-    else:
-        result_accurate = result
-
-    return np.array([result_accurate[0], result_accurate[1]])
+    return np.array([result[0], result[1]])
 
 
 ###############################################################################
 # MAIN definition
 if __name__ == "__main__":
 
-    with open(".config/config_fang.json") as f:
+    # We only require a JSON config file for the tdoa multilateration
+    parser = argparse.ArgumentParser(
+        description="Multilateration with RTL-SDR receivers"
+    )
+    parser.add_argument(
+        "-c",
+        "--config",
+        type=str,
+        required=True,
+        help="Configuration file for the optimizer in JSON format",
+    )
+    args = parser.parse_args()
+
+    config_filename = args.config
+    with open(config_filename) as f:
         config = json.load(f)
 
     position = pytdoa(config)

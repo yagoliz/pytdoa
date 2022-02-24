@@ -1,5 +1,6 @@
 import numpy as np
 
+
 def fang(positions, tdoas):
     """
     Solve the TDOA Equations using Fang's exact solution
@@ -13,13 +14,15 @@ def fang(positions, tdoas):
     if positions.shape[0] != 3:
         raise RuntimeError("Need 3 sensor positions")
 
-    s1 = positions[0,:].reshape(-1,1)
-    s2 = positions[1,:].reshape(-1,1)
-    s3 = positions[2,:].reshape(-1,1)
+    s1 = positions[0, :].reshape(-1, 1)
+    s2 = positions[1, :].reshape(-1, 1)
+    s3 = positions[2, :].reshape(-1, 1)
 
     # Calculate the angle between s1 and s2
-    theta = np.arctan((s2[1]-s1[1])/(s2[0]-s1[0]))
-    R = np.array([[np.cos(theta), -np.sin(theta)],[np.sin(theta), np.cos(theta)]]).squeeze()
+    theta = np.arctan((s2[1] - s1[1]) / (s2[0] - s1[0]))
+    R = np.array(
+        [[np.cos(theta), -np.sin(theta)], [np.sin(theta), np.cos(theta)]]
+    ).squeeze()
 
     # Rotate the vectors
     s1_rot = np.array([0.0, 0.0])
@@ -34,24 +37,26 @@ def fang(positions, tdoas):
     c = np.sqrt(cx**2 + cy**2)
 
     # We extract the values for g and h
-    g = ((tdoas[1]/tdoas[0]) * b - cx)/cy
-    h = (c**2 - tdoas[1]**2 + tdoas[0]*tdoas[1]*(1-(b/tdoas[0])**2)**2)/(2*cy)
+    g = ((tdoas[1] / tdoas[0]) * b - cx) / cy
+    h = (
+        c**2 - tdoas[1] ** 2 + tdoas[0] * tdoas[1] * (1 - (b / tdoas[0]) ** 2) ** 2
+    ) / (2 * cy)
 
     # With this we go for the terms of the quadratic equation
-    d = -(1 + g**2 - (b/tdoas[0])**2)
-    e = b * (1 - (b/tdoas[0])**2) - 2*g*h
-    f = tdoas[0]**2/4 * (1 - (b/tdoas[0])**2)**2 - h**2
+    d = -(1 + g**2 - (b / tdoas[0]) ** 2)
+    e = b * (1 - (b / tdoas[0]) ** 2) - 2 * g * h
+    f = tdoas[0] ** 2 / 4 * (1 - (b / tdoas[0]) ** 2) ** 2 - h**2
 
     # Terms for x and y (positions)
-    xp = (-e + np.sqrt(e**2 - 4 *d*f)) / (2*d)
-    yp = g*xp + h
+    xp = (-e + np.sqrt(e**2 - 4 * d * f)) / (2 * d)
+    yp = g * xp + h
 
-    xm = (-e - np.sqrt(e**2 - 4*d*f)) / (2*d)
-    ym = g*xm + h
+    xm = (-e - np.sqrt(e**2 - 4 * d * f)) / (2 * d)
+    ym = g * xm + h
 
     # Conversion to absolute coordinates
     # For the positive result
-    rp = R @ np.array([[xp],[yp]])
+    rp = R @ np.array([[xp], [yp]])
     rpt = rp + s1
 
     rpt_real = rpt.real
@@ -63,7 +68,7 @@ def fang(positions, tdoas):
         y = np.append(y, rpt_real[1])
 
     # For the negative result
-    rm = R @ np.array([[xm],[ym]])
+    rm = R @ np.array([[xm], [ym]])
     rmt = rm + s1
 
     rmt_real = rmt.real
@@ -77,6 +82,3 @@ def fang(positions, tdoas):
         y = np.append(y, rmt_real[1])
 
     return (x, y)
-
-
-    

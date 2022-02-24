@@ -1,27 +1,30 @@
 {
     "transmitters": {
         "unknown": {
-            "freq": 208.0
+            "freq": 0.0,
+            "bw": 0.0
         },
         "reference": {
-            "coord": [40.420570, -3.664179],
-            "height": 600,
-            "freq": 196.0
-            }
+            "coord": [0.0, 0.0],
+            "height": 0.0,
+            "freq": 0.0,
+            "bw": 0.0
+        }
     },
     "sensors": [
-        {"name": "chamberi", "coordinates": [40.4345206595492, -3.7133489826847645], "height": 600,"serial": 202481591991736},
-        {"name": "madrid_city_1", "coordinates": [40.39972003205393,-3.706653225235641], "height": 600, "serial": 202481596393530},
-        {"name": "rack_1", "coordinates": [40.33700487629082, -3.7704030769652808], "height": 600, "serial": 202481593109723},
-        {"name": "Alcorcon1", "coordinates": [40.34341760956179,-3.8443885452579707], "height": 600, "serial": 202481597653280}
+        {"name": "s1", "coordinates": [0.0, 0.0], "height": 0.0,"serial": 12345},
+        {"name": "s2", "coordinates": [0.0, 0.0], "height": 0.0,"serial": 23451},
+        {"name": "s3", "coordinates": [0.0, 0.0], "height": 0.0,"serial": 34512}
     ],
     "config": {
+        "method": "linear",
+        "correct": true,
         "samples_per_slice": 1000000,
         "sample_rate": 2000000,
         "sample_rate_ltess": 1920000,
-        "correct": true,
-        "accurate": true,
-        "filenum": 1,
-        "folder": "/home/ygglc/desktop/phd/research/localization/core/localization-tdoa/data/real_tests/20211012"
+        "corr_type": "abs",
+        "interpol": 1,
+        "folder": "",
+        "filenum": 1
     }
 }

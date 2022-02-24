@@ -20,8 +20,8 @@ class geoC:
     CIRCUMFERENCE: float = 2 * np.pi * SPHERICAL_R
 
     # Some derived values
-    wgs84_ep: float = np.sqrt((WGS84_A ** 2 - WGS84_B ** 2) / WGS84_B ** 2)
-    wgs84_ep2_b: float = wgs84_ep ** 2 * WGS84_B
+    wgs84_ep: float = np.sqrt((WGS84_A**2 - WGS84_B**2) / WGS84_B**2)
+    wgs84_ep2_b: float = wgs84_ep**2 * WGS84_B
     wgs84_e2_a: float = WGS84_ECC_SQ * WGS84_A
 
 
@@ -56,8 +56,6 @@ def ecef_distance(p0, p1):
     """
 
     return np.sqrt(np.sum((p0 - p1) ** 2, axis=1))
-
-    
 
 
 def llh2ecef(llh):
@@ -107,7 +105,7 @@ def ecef2llh(ecef):
 
     lon = np.arctan2(y, x)
 
-    p = np.sqrt(x ** 2 + y ** 2)
+    p = np.sqrt(x**2 + y**2)
     th = np.arctan2(geoC.WGS84_A * z, geoC.WGS84_B * p)
     lat = np.arctan2(
         z + geoC.wgs84_ep2_b * np.sin(th) ** 3, p - geoC.wgs84_e2_a * np.cos(th) ** 3
@@ -143,14 +141,14 @@ def haversine(theta):
 
 
 def latlon2xy(lat, lon, ref_lat, ref_lon):
-    y = (lat - ref_lat)/360 * geoC.CIRCUMFERENCE
-    x = (lon - ref_lon)/360 * np.cos(ref_lat*np.pi/180) * geoC.CIRCUMFERENCE
+    y = (lat - ref_lat) / 360 * geoC.CIRCUMFERENCE
+    x = (lon - ref_lon) / 360 * np.cos(ref_lat * np.pi / 180) * geoC.CIRCUMFERENCE
 
-    return np.hstack((x.reshape(-1,1), y.reshape(-1,1)))
+    return np.hstack((x.reshape(-1, 1), y.reshape(-1, 1)))
 
 
 def xy2latlon(x, y, ref_lat, ref_lon):
     lat = (y * 360 / geoC.CIRCUMFERENCE) + ref_lat
-    lon = ((x * 360) / (geoC.CIRCUMFERENCE * np.cos(ref_lat*np.pi/180))) + ref_lon
+    lon = ((x * 360) / (geoC.CIRCUMFERENCE * np.cos(ref_lat * np.pi / 180))) + ref_lon
 
-    return np.hstack((lat.reshape(-1,1), lon.reshape(-1,1)))
+    return np.hstack((lat.reshape(-1, 1), lon.reshape(-1, 1)))

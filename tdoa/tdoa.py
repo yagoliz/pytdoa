@@ -1,5 +1,7 @@
+from random import sample
 import numpy as np
 from scipy.signal import correlate, correlation_lags, detrend
+from scipy.signal import kaiserord, lfilter, firwin, freqz
 from scipy.interpolate import interp1d
 
 from geodesy.geodesy import SPEED_OF_LIGHT as c
@@ -51,12 +53,29 @@ def correlate_iq(s1, s2, method="dphase"):
     return (acor, lags)
 
 
+def design_filt(bandwidth, fs, ripple=60, width_percent=0.05, cutoff_percent=0.05):
+
+    # Obtain the passband & stopband frequencies
+    cutoff = (1 + cutoff_percent) * bandwidth / 2
+    width = width_percent * bandwidth / 2
+
+    # First we get an estimation of the optimal number of taps
+    numtaps, beta = kaiserord(ripple, width / (0.5 * fs))
+    return firwin(numtaps, cutoff, window=("kaiser", beta), fs=fs)
+
+
+def filter_iq(signal, taps):
+    # Use lfilter function to filter our signal
+    # Since the second parameter is set to 1, we will have a FIR filter
+    return lfilter(taps, 1.0, signal)
+
+
 def tdoa(
     s1,
     s2,
     rx_diff,
-    signal_bandwidth_rs=2e6,
-    signal_bandwidth_us=2e6,
+    taps_rs=None,
+    taps_us=None,
     samples_per_frequency=1000000,
     guard=0.7,
     sample_rate=2e6,
@@ -87,22 +106,49 @@ def tdoa(
     s22 = s2[samples_per_frequency + left : samples_per_frequency + right]
     s23 = s2[2 * samples_per_frequency + left : 2 * samples_per_frequency + right]
 
-    ## Correlations
+    # Filtering
+    # Reference signals
+    if taps_rs != None:
+        s11 = filter_iq(s11, taps_rs)
+        s13 = filter_iq(s13, taps_rs)
 
+        s21 = filter_iq(s21, taps_rs)
+        s23 = filter_iq(s23, taps_rs)
+
+        print(f"[INFO] TDOA: Reference signals filtered")
+    else:
+        print("[INFO] TDOA: No filter applied to reference signals")
+
+    # Target frequency
+    if signal_bandwidth_rs < sample_rate:
+        s12 = filter_iq(s12, taps_us)
+        s22 = filter_iq(s22, taps_us)
+
+        print(f"[INFO] TDOA: Target signals filtered")
+    else:
+        print("[INFO] TDOA: No filter applied to target signals")
+
+    ## Correlations
     # First chunk correlation
     [acor1, lags1] = correlate_iq(s11, s21, method=corr_type)
 
     midx1 = np.argmax(acor1)
     mcor1 = acor1[midx1]
     mlag1 = lags1[midx1]
-    
+
     # We upsample the acor result
     if interpol > 1:
         N = (2 * valid) * interpol
-        lags1_interpolated = np.linspace(lags1[midx1-valid], lags1[midx1+valid]-1, N, endpoint=False)
+        lags1_interpolated = np.linspace(
+            lags1[midx1 - valid], lags1[midx1 + valid] - 1, N, endpoint=False
+        )
 
         # Create interpolator object
-        interpolant = interp1d(lags1[midx1-valid:midx1+valid], acor1[midx1-valid:midx1+valid], kind='cubic')
+        interpolant = interp1d(
+            lags1[midx1 - valid : midx1 + valid],
+            acor1[midx1 - valid : midx1 + valid],
+            kind="cubic",
+        )
         acor1_interpolated = interpolant(lags1_interpolated)
 
         midx1_interpolated = np.argmax(acor1_interpolated)
@@ -113,7 +159,6 @@ def tdoa(
         mcor1_interpolated = mcor1
         mlag1_interpolated = mlag1
 
-
     # Second chunk correlation
     [acor2, lags2] = correlate_iq(s12, s22, method=corr_type)
     midx2 = np.argmax(acor2)
@@ -121,10 +166,16 @@ def tdoa(
     mlag2 = lags2[midx2]
 
     if interpol > 1:
-        lags2_interpolated = np.linspace(lags2[midx2-valid], lags2[midx2+valid]-1, N, endpoint=False)
+        lags2_interpolated = np.linspace(
+            lags2[midx2 - valid], lags2[midx2 + valid] - 1, N, endpoint=False
+        )
 
         # Create interpolator object
-        interpolant = interp1d(lags2[midx2-valid:midx2+valid], acor2[midx2-valid:midx2+valid], kind='cubic')
+        interpolant = interp1d(
+            lags2[midx2 - valid : midx2 + valid],
+            acor2[midx2 - valid : midx2 + valid],
+            kind="cubic",
+        )
         acor2_interpolated = interpolant(lags2_interpolated)
 
         midx2_interpolated = np.argmax(acor2_interpolated)
@@ -142,10 +193,16 @@ def tdoa(
     mlag3 = lags3[midx3]
 
     if interpol > 1:
-        lags3_interpolated = np.linspace(lags3[midx3-valid], lags3[midx3+valid]-1, N, endpoint=False)
+        lags3_interpolated = np.linspace(
+            lags3[midx3 - valid], lags3[midx3 + valid] - 1, N, endpoint=False
+        )
 
         # Create interpolator object
-        interpolant = interp1d(lags3[midx3-valid:midx3+valid], acor2[midx3-valid:midx3+valid], kind='cubic')
+        interpolant = interp1d(
+            lags3[midx3 - valid : midx3 + valid],
+            acor2[midx3 - valid : midx3 + valid],
+            kind="cubic",
+        )
         acor3_interpolated = interpolant(lags3_interpolated)
 
         midx3_interpolated = np.argmax(acor3_interpolated)
@@ -175,17 +232,25 @@ def tdoa(
 
     if report > 0:
         print(" ")
-        print("[INFO] MULTILATERATION: CORRELATION RESULTS")
-        print(f"\tRaw Delay 1 (ref) in samples (Regular / Upsampled): {mlag1}/{mlag1_interpolated:.1f}. Reliability (0-1): {mcor1:.2f}/{mcor1_interpolated:.2f}")
-        print(f"\tRaw Delay 2 (unk) in samples (Regular / Upsampled): {mlag2}/{mlag2_interpolated:.1f}. Reliability (0-1): {mcor2:.2f}/{mcor2_interpolated:.2f}")
-        print(f"\tRaw Delay 3 (chk) in samples (Regular / Upsampled): {mlag3}/{mlag3_interpolated:.1f}. Reliability (0-1): {mcor3:.2f}/{mcor3_interpolated:.2f}")
-        print(f"\tMerged Delay (1 & 3) in samples (Regular / Upsampled): {mlag}/{mlag_interpolated:.1f}")
+        print("[INFO] TDOA: CORRELATION RESULTS")
+        print(
+            f"\tRaw Delay 1 (ref) in samples (Regular / Upsampled): {mlag1}/{mlag1_interpolated:.1f}. Reliability (0-1): {mcor1:.2f}/{mcor1_interpolated:.2f}"
+        )
+        print(
+            f"\tRaw Delay 2 (unk) in samples (Regular / Upsampled): {mlag2}/{mlag2_interpolated:.1f}. Reliability (0-1): {mcor2:.2f}/{mcor2_interpolated:.2f}"
+        )
+        print(
+            f"\tRaw Delay 3 (chk) in samples (Regular / Upsampled): {mlag3}/{mlag3_interpolated:.1f}. Reliability (0-1): {mcor3:.2f}/{mcor3_interpolated:.2f}"
+        )
+        print(
+            f"\tMerged Delay (1 & 3) in samples (Regular / Upsampled): {mlag}/{mlag_interpolated:.1f}"
+        )
 
-        print("[INFO] MULTILATERATION: REFERENCE TRANSMITTER")
+        print("[INFO] TDOA: REFERENCE TRANSMITTER")
         print(f"\tDistance to Reference TX [m]: {rx_diff}")
         print(f"\tDistance to Reference TX [samples]: {rx_diff_samples}")
 
-        print("[INFO] MULTILATERATION: UNKNOWN TRANSMITTER")
+        print("[INFO] TDOA: UNKNOWN TRANSMITTER")
         print("------ Regular")
         print(f"\tTDOA to Unknown TX (Merged) [m]: {tdoa_s}")
         print(f"\tTDOA to Unknown TX (Merged) [samples]: {tdoa_m:.2f}")
