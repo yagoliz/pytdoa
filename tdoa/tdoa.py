@@ -120,7 +120,7 @@ def tdoa(
         print("[INFO] TDOA: No filter applied to reference signals")
 
     # Target frequency
-    if signal_bandwidth_rs < sample_rate:
+    if taps_us != None:
         s12 = filter_iq(s12, taps_us)
         s22 = filter_iq(s22, taps_us)
 
