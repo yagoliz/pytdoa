@@ -7,7 +7,6 @@
 import argparse
 import itertools
 import json
-from turtle import shape
 
 import numpy as np
 import pandas as pd
@@ -342,18 +341,17 @@ def pytdoa(config):
         tdoa_list = np.append(tdoa_list, [tdoa_ij["tdoa_m_i"]])
 
     # Optimization part
-    match method:
-        case "linear":
-            result = linoptim(sensors, tdoa_list[: NUM_SENSORS - 1])
+    if method == "linear":
+        result = linoptim(sensors, tdoa_list[: NUM_SENSORS - 1])
 
-        case "brute":
-            result = brutefoptim(sensors, tdoa_list, combination_list)
+    elif method == "brute":
+        result = brutefoptim(sensors, tdoa_list, combination_list)
 
-        case "nonlinear":
-            result = nonlinoptim(sensors, tdoa_list, combination_list)
+    elif method == "nonlinear":
+        result = nonlinoptim(sensors, tdoa_list, combination_list)
 
-        case _:
-            raise RuntimeError("Unsupported optimization method")
+    else:
+        raise RuntimeError("Unsupported optimization method")
 
     return np.array([result[0], result[1]])
 
