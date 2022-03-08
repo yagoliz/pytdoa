@@ -18,6 +18,7 @@
 #   Authors: Roberto Calvo-Palomino <roberto.calvo [at] imdea [dot] org>
 #
 
+import logging
 import sys
 
 from pylab import *
@@ -27,6 +28,8 @@ import matplotlib.pyplot as plt
 from sklearn.preprocessing import MinMaxScaler
 
 scaler = MinMaxScaler(feature_range=(0, 1))
+
+logger = logging.getLogger(__name__)
 
 
 def get_peaks(
@@ -218,9 +221,8 @@ def get_drift(
 
     # print("Winning sequence: " + str(seq))
     if len(np.where(abs(diff(peaks) - pss_step) > 10)[0]) > 0:
-        print(
-            "[LTESSTRACK] Warning: Some PSS detected are further than %d +- 10 I/Q samples"
-            % (pss_step)
+        logger.warning(
+            "Some PSS detected are further than %d +- 10 I/Q samples" % (pss_step)
         )
 
     if debug_plot:
@@ -237,7 +239,7 @@ def get_drift(
     # We assume peaks are properly located if they are in a range of 10 samples from the expected position
     valid_peaks = np.where((np.diff(l_peaks) - pss_step) < 10)
     if len(valid_peaks) == 0 or len(valid_peaks[0]) == 0:
-        print("[LTESSTRACK] Error: No valid PSS at the begining.")
+        logger.error("No valid PSS at the begining.")
         sys.exit(-1)
 
     last_valid_peak = l_peaks[valid_peaks[0][-1] + 1]

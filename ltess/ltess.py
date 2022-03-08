@@ -1,15 +1,17 @@
+import logging
 import os
+from pathlib import Path
 
 import numpy as np
 
-from scipy import signal
-from sklearn.preprocessing import MinMaxScaler
 
 from ltess.foc.pssdrift import *
 
 import warnings
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
+
+logger = logging.getLogger(__name__)
 
 # Load Zadoof sequencies
 def get_zadoof_seqs(filename):
@@ -43,12 +45,12 @@ def ltess(
 
     # load zadoof sequences (in time)
     try:
-        cwd = os.getcwd()
+        mainpath = Path(__file__).resolve().parent
         Z_sequences = np.array(
             [
-                get_zadoof_seqs(f"{cwd}/ltess/lte/25-Zadoff.bin"),
-                get_zadoof_seqs(f"{cwd}/ltess/lte/29-Zadoff.bin"),
-                get_zadoof_seqs(f"{cwd}/ltess/lte/34-Zadoff.bin"),
+                get_zadoof_seqs(f"{mainpath}/lte/25-Zadoff.bin"),
+                get_zadoof_seqs(f"{mainpath}/lte/29-Zadoff.bin"),
+                get_zadoof_seqs(f"{mainpath}/lte/34-Zadoff.bin"),
             ]
         )
     except FileNotFoundError:
@@ -72,8 +74,8 @@ def ltess(
         debug_plot=False,
     )
 
-    print(
-        "[LTESSTRACK] Local oscilator error: %.8f PPM - [%.2f Hz], confidence=%.3f"
+    logger.info(
+        "Local oscilator error: %.8f PPM - [%.2f Hz], confidence=%.3f"
         % (PPM, delta_f, confidence)
     )
 

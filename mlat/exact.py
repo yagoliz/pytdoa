@@ -1,4 +1,7 @@
+import logging
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 
 def fang(positions, tdoas):
@@ -77,7 +80,7 @@ def fang(positions, tdoas):
     # We need to compare whether the signs are the same for the obtained result and the observed tdoa
     if np.sign(rmt_norm) == np.sign(tdoas[0]):
         if x.shape[0] != 0:
-            print("[WARNING] MULTILATERATION: Multiple solutions exist")
+            logger.warning("Multiple solutions exist")
         x = np.append(x, rmt_real[0])
         y = np.append(y, rmt_real[1])
 

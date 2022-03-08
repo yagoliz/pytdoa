@@ -4,20 +4,45 @@
 # Author: Yago Lizarribar
 # Email: yago.lizarribar@imdea.org
 
+
+################################################################################
+# Imports
 import argparse
 import itertools
 import json
 
+import logging
+import logging.config
+from operator import le
 import numpy as np
 import pandas as pd
 from scipy.signal import resample
 import scipy.optimize as optimize
+import yaml
 
 from geodesy import geodesy
 from ltess import ltess
 from mlat import exact, lls, nlls
 from spec_load import spec_load
 from tdoa import tdoa
+
+
+################################################################################
+# Logging library configuration
+logger = logging.getLogger(__name__)
+
+# Load user defined configuration
+def set_logger_level(filename="logging.yml", level="INFO"):
+    
+    with open(filename, "r") as f:
+        config = yaml.safe_load(f.read())
+        logging.config.dictConfig(config)
+
+    logger.setLevel(level=level)
+
+
+################################################################################
+# PYTDOA functions
 
 
 def correct_fo(signal, PPM, fRS, fUS, samplingRate=2e6):
@@ -182,7 +207,7 @@ def brutefoptim(
             ln = ln * 0.1
             st = 2 * lt / Ns
 
-    print("[WARNING] OPTIMIZATION: Reached maximum number of iterations")
+    logger.warning("Reached maximum number of iterations")
     return Xr
 
 
@@ -259,15 +284,11 @@ def pytdoa(config):
     taps_rs, taps_us = None, None
     if bw_rs < sr_tdoa:
         taps_rs = tdoa.design_filt(bw_rs, sr_tdoa)
-        print(
-            f"[INFO] PYTDOA: Filter for reference signal of bandwidth {bw_rs:.2f} created"
-        )
+        logger.info(f"Filter for reference signal of bandwidth {bw_rs:.2f} created")
 
     if bw_us < sr_tdoa:
         taps_us = tdoa.design_filt(bw_us, sr_tdoa)
-        print(
-            f"[INFO] PYTDOA: Filter for targe signal of bandwidth {bw_us:.2f} created"
-        )
+        logger.info(f"Filter for targe signal of bandwidth {bw_us:.2f} created")
 
     # Correct the drift of the RTL-SDRs (requires knowing the drift in PPM)
     correct = config["config"]["correct"]
@@ -356,14 +377,15 @@ def pytdoa(config):
     return np.array([result[0], result[1]])
 
 
-###############################################################################
+################################################################################
 # MAIN definition
 if __name__ == "__main__":
 
-    # We only require a JSON config file for the tdoa multilateration
+    # Argument parsing
     parser = argparse.ArgumentParser(
         description="Multilateration with RTL-SDR receivers"
     )
+    # TDOA configuration
     parser.add_argument(
         "-c",
         "--config",
@@ -371,12 +393,25 @@ if __name__ == "__main__":
         required=True,
         help="Configuration file for the optimizer in JSON format",
     )
+    # Logging level
+    parser.add_argument(
+        "--logging-level",
+        type=str,
+        choices=["DEBUG", "INFO", "WARN", "ERROR", "CRITICAL"],
+        default="DEBUG",
+        required=False,
+        help="Debug level [Default: INFO]",
+    )
     args = parser.parse_args()
 
+    # Load configuration
     config_filename = args.config
     with open(config_filename) as f:
         config = json.load(f)
 
-    position = pytdoa(config)
+    # Parse logger configuration
+    set_logger_level(level=args.logging_level)
 
-    print("Result: ", position.tolist())
+    # Position estimation
+    position = pytdoa(config)
+    logger.info(f"Result: {position.tolist()}")

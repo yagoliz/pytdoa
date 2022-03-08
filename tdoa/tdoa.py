@@ -1,10 +1,15 @@
+import logging
 from random import sample
+import sys
+
 import numpy as np
 from scipy.signal import correlate, correlation_lags, detrend
 from scipy.signal import kaiserord, lfilter, firwin, freqz
 from scipy.interpolate import interp1d
 
 from geodesy.geodesy import SPEED_OF_LIGHT as c
+
+logger = logging.getLogger(__name__)
 
 
 def correlate_arrays(s1, s2, normalize=True):
@@ -48,7 +53,8 @@ def correlate_iq(s1, s2, method="dphase"):
         (acor, lags) = correlate_arrays(d1, d2)
 
     else:
-        raise RuntimeError("Unsupported Correlation Type")
+        logger.error(f"Correlation type: ${method} not supported")
+        sys.exit(-1)
 
     return (acor, lags)
 
@@ -115,18 +121,18 @@ def tdoa(
         s21 = filter_iq(s21, taps_rs)
         s23 = filter_iq(s23, taps_rs)
 
-        print(f"[INFO] TDOA: Reference signals filtered")
+        logger.info(f"Reference signals filtered")
     else:
-        print("[INFO] TDOA: No filter applied to reference signals")
+        logger.info("No filter applied to reference signals")
 
     # Target frequency
     if taps_us != None:
         s12 = filter_iq(s12, taps_us)
         s22 = filter_iq(s22, taps_us)
 
-        print(f"[INFO] TDOA: Target signals filtered")
+        logger.info(f"Target signals filtered")
     else:
-        print("[INFO] TDOA: No filter applied to target signals")
+        logger.info("No filter applied to target signals")
 
     ## Correlations
     # First chunk correlation
@@ -215,7 +221,7 @@ def tdoa(
 
     # Now compute the TDOAs
     if abs(mlag1 - mlag3) > 2:
-        print("[WARNING] Delay between Reference Chunks is greater than 2 samples")
+        logger.warning("Delay between Reference Chunks is greater than 2 samples")
 
     mlag = (mlag1 + mlag3) / 2
     mlag_interpolated = (mlag1_interpolated + mlag3_interpolated) / 2
@@ -230,43 +236,46 @@ def tdoa(
     tdoa_m_2 = tdoa_s_2 / sample_rate * c
     tdoa_m_2_interpolated = tdoa_s_2_interpolated / sample_rate * c
 
-    if report > 0:
-        print(" ")
-        print("[INFO] TDOA: CORRELATION RESULTS")
-        print(
-            f"\tRaw Delay 1 (ref) in samples (Regular / Upsampled): {mlag1}/{mlag1_interpolated:.1f}. Reliability (0-1): {mcor1:.2f}/{mcor1_interpolated:.2f}"
-        )
-        print(
-            f"\tRaw Delay 2 (unk) in samples (Regular / Upsampled): {mlag2}/{mlag2_interpolated:.1f}. Reliability (0-1): {mcor2:.2f}/{mcor2_interpolated:.2f}"
-        )
-        print(
-            f"\tRaw Delay 3 (chk) in samples (Regular / Upsampled): {mlag3}/{mlag3_interpolated:.1f}. Reliability (0-1): {mcor3:.2f}/{mcor3_interpolated:.2f}"
-        )
-        print(
-            f"\tMerged Delay (1 & 3) in samples (Regular / Upsampled): {mlag}/{mlag_interpolated:.1f}"
-        )
+    # Logging all the results
+    logger.info("-----")
+    logger.info("CORRELATION RESULTS")
+    logger.info(
+        f"\tRaw Delay 1 (ref) in samples (Regular / Upsampled): {mlag1}/{mlag1_interpolated:.1f}. Reliability (0-1): {mcor1:.2f}/{mcor1_interpolated:.2f}"
+    )
+    logger.info(
+        f"\tRaw Delay 2 (unk) in samples (Regular / Upsampled): {mlag2}/{mlag2_interpolated:.1f}. Reliability (0-1): {mcor2:.2f}/{mcor2_interpolated:.2f}"
+    )
+    logger.info(
+        f"\tRaw Delay 3 (chk) in samples (Regular / Upsampled): {mlag3}/{mlag3_interpolated:.1f}. Reliability (0-1): {mcor3:.2f}/{mcor3_interpolated:.2f}"
+    )
+    logger.info(
+        f"\tMerged Delay (1 & 3) in samples (Regular / Upsampled): {mlag}/{mlag_interpolated:.1f}"
+    )
 
-        print("[INFO] TDOA: REFERENCE TRANSMITTER")
-        print(f"\tDistance to Reference TX [m]: {rx_diff}")
-        print(f"\tDistance to Reference TX [samples]: {rx_diff_samples}")
+    logger.info("REFERENCE TRANSMITTER")
+    logger.info(f"\tDistance to Reference TX [m]: {rx_diff}")
+    logger.info(f"\tDistance to Reference TX [samples]: {rx_diff_samples}")
 
-        print("[INFO] TDOA: UNKNOWN TRANSMITTER")
-        print("------ Regular")
-        print(f"\tTDOA to Unknown TX (Merged) [m]: {tdoa_s}")
-        print(f"\tTDOA to Unknown TX (Merged) [samples]: {tdoa_m:.2f}")
-        print(f"\tTDOA to Unknown TX (Unmerged) [m]: {tdoa_s_2}")
-        print(f"\tTDOA to Unknown TX (Unmerged) [samples]: {tdoa_m_2:.2f}")
-        print("------ Upsampled")
-        print(f"\tTDOA to Unknown TX (Merged) [m]: {tdoa_s_interpolated:.1f}")
-        print(f"\tTDOA to Unknown TX (Merged) [samples]: {tdoa_m_interpolated:.2f}")
-        print(f"\tTDOA to Unknown TX (Unmerged) [m]: {tdoa_s_2_interpolated:.1f}")
-        print(f"\tTDOA to Unknown TX (Unmerged) [samples]: {tdoa_m_2_interpolated:.2f}")
-        print(
-            f"\t- Reliability (Minimum correlation value): {np.min([mcor1, mcor2, mcor3])}"
-        )
-        print(
-            f"\t- Reliability Upsampled (Minimum correlation value): {np.min([mcor1_interpolated, mcor2_interpolated, mcor3_interpolated]):.2f}"
-        )
+    logger.info("UNKNOWN TRANSMITTER")
+    logger.info("------ Regular")
+    logger.info(f"\tTDOA to Unknown TX (Merged) [m]: {tdoa_s}")
+    logger.info(f"\tTDOA to Unknown TX (Merged) [samples]: {tdoa_m:.2f}")
+    logger.info(f"\tTDOA to Unknown TX (Unmerged) [m]: {tdoa_s_2}")
+    logger.info(f"\tTDOA to Unknown TX (Unmerged) [samples]: {tdoa_m_2:.2f}")
+    logger.info("------ Upsampled")
+    logger.info(f"\tTDOA to Unknown TX (Merged) [m]: {tdoa_s_interpolated:.1f}")
+    logger.info(f"\tTDOA to Unknown TX (Merged) [samples]: {tdoa_m_interpolated:.2f}")
+    logger.info(f"\tTDOA to Unknown TX (Unmerged) [m]: {tdoa_s_2_interpolated:.1f}")
+    logger.info(
+        f"\tTDOA to Unknown TX (Unmerged) [samples]: {tdoa_m_2_interpolated:.2f}"
+    )
+    logger.info(
+        f"\t- Reliability (Minimum correlation value): {np.min([mcor1, mcor2, mcor3])}"
+    )
+    logger.info(
+        f"\t- Reliability Upsampled (Minimum correlation value): {np.min([mcor1_interpolated, mcor2_interpolated, mcor3_interpolated]):.2f}"
+    )
+    logger.info(" ")
 
     # Return dict with most important results
     return {
