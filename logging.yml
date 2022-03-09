@@ -21,6 +21,6 @@ handlers:
     backupCount: 3
 
 root:
-  level: NOTSET
+  level: INFO
   handlers: [console]
   propagate: no

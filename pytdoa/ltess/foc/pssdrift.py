@@ -29,7 +29,7 @@ from sklearn.preprocessing import MinMaxScaler
 
 scaler = MinMaxScaler(feature_range=(0, 1))
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("LTESS")
 
 
 def get_peaks(

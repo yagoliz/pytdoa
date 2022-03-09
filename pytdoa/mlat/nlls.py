@@ -1,6 +1,6 @@
 import numpy as np
 
-from geodesy import geodesy
+from pytdoa.geodesy import geodesy
 
 
 def nlls(X, positions, tdoas, combinations):

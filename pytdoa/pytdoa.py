@@ -7,43 +7,25 @@
 
 ################################################################################
 # Imports
-import argparse
 import itertools
-import json
 
 import logging
 import logging.config
-from operator import le
 import numpy as np
 import pandas as pd
 from scipy.signal import resample
 import scipy.optimize as optimize
-import yaml
 
-from geodesy import geodesy
-from ltess import ltess
-from mlat import exact, lls, nlls
-from spec_load import spec_load
-from tdoa import tdoa
+from pytdoa.geodesy import geodesy
+from pytdoa.ltess import ltess
+from pytdoa.mlat import exact, lls, nlls
+from pytdoa.spec_load import spec_load
+from pytdoa.tdoa import tdoa
 
-
-################################################################################
-# Logging library configuration
-logger = logging.getLogger(__name__)
-
-# Load user defined configuration
-def set_logger_level(filename="logging.yml", level="INFO"):
-    
-    with open(filename, "r") as f:
-        config = yaml.safe_load(f.read())
-        logging.config.dictConfig(config)
-
-    logger.setLevel(level=level)
-
+logger = logging.getLogger("PYTDOA")
 
 ################################################################################
 # PYTDOA functions
-
 
 def correct_fo(signal, PPM, fRS, fUS, samplingRate=2e6):
     """
@@ -375,43 +357,3 @@ def pytdoa(config):
         raise RuntimeError("Unsupported optimization method")
 
     return np.array([result[0], result[1]])
-
-
-################################################################################
-# MAIN definition
-if __name__ == "__main__":
-
-    # Argument parsing
-    parser = argparse.ArgumentParser(
-        description="Multilateration with RTL-SDR receivers"
-    )
-    # TDOA configuration
-    parser.add_argument(
-        "-c",
-        "--config",
-        type=str,
-        required=True,
-        help="Configuration file for the optimizer in JSON format",
-    )
-    # Logging level
-    parser.add_argument(
-        "--logging-level",
-        type=str,
-        choices=["DEBUG", "INFO", "WARN", "ERROR", "CRITICAL"],
-        default="DEBUG",
-        required=False,
-        help="Debug level [Default: INFO]",
-    )
-    args = parser.parse_args()
-
-    # Load configuration
-    config_filename = args.config
-    with open(config_filename) as f:
-        config = json.load(f)
-
-    # Parse logger configuration
-    set_logger_level(level=args.logging_level)
-
-    # Position estimation
-    position = pytdoa(config)
-    logger.info(f"Result: {position.tolist()}")

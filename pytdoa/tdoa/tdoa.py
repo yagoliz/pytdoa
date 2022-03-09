@@ -7,9 +7,9 @@ from scipy.signal import correlate, correlation_lags, detrend
 from scipy.signal import kaiserord, lfilter, firwin, freqz
 from scipy.interpolate import interp1d
 
-from geodesy.geodesy import SPEED_OF_LIGHT as c
+from ..geodesy.geodesy import SPEED_OF_LIGHT as c
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("TDOA")
 
 
 def correlate_arrays(s1, s2, normalize=True):

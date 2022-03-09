@@ -5,13 +5,13 @@ from pathlib import Path
 import numpy as np
 
 
-from ltess.foc.pssdrift import *
+from pytdoa.ltess.foc.pssdrift import *
 
 import warnings
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("LTESS")
 
 # Load Zadoof sequencies
 def get_zadoof_seqs(filename):

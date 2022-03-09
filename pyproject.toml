@@ -16,6 +16,10 @@ scikit-learn = "^1.0.2"
 [tool.poetry.dev-dependencies]
 black = "^22.1.0"
 ipykernel = "^6.9.1"
+ipywidgets = "^7.6.5"
+jupyter = "^1.0.0"
+notebook = "^6.4.8"
+seaborn = "^0.11.2"
 
 
 [build-system]

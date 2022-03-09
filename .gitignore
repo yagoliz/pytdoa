@@ -1,3 +1,8 @@
+# IDEs and configurations
 .vscode/
 .config/
 __pycache__/
+.ipynb_checkpoints/
+
+# Build dirs
+dist/
