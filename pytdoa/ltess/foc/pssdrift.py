@@ -1,5 +1,3 @@
-#!/usr/bin/python
-#
 #   Copyright (C) IMDEA Networks Institute 2019
 #   This program is free software: you can redistribute it and/or modify
 #
