@@ -102,4 +102,4 @@ def fang(positions, tdoas):
         x = np.append(x, rmt_real[0])
         y = np.append(y, rmt_real[1])
 
-    return (x, y)
+    return np.hstack((x.reshape(-1,1), y.reshape(-1,1)))

@@ -61,8 +61,9 @@ def generate_heatmap(
     yrange: Tuple[float, float],
     combinations: ndarray_i64,
     step: Union[float, Tuple[float, float]] = 10.0,
+    filter: bool = True,
     threshold: float = 0.1
-) -> Tuple[ndarray_f64, ndarray_f64, ndarray_f64]:
+) -> ndarray_f64:
     """
     Function that calculates the heatmap of the a given cost function
 
@@ -110,12 +111,13 @@ def generate_heatmap(
     logger.info(f"Heatmap generated with {len(Z)} points")
 
     # Remove values below threshold
-    idx = Z > threshold
-    x = x[idx]
-    y = y[idx]
-    Z = Z[idx]
+    if filter:
+        idx = Z > threshold
+        x = x[idx]
+        y = y[idx]
+        Z = Z[idx]
 
-    return (x, y, Z)
+    return np.hstack((x.reshape(-1,1), y.reshape(-1,1), Z.reshape(-1,1)))
 
 
 def generate_hyperbola(tdoa: ndarray_f64, rx1: ndarray_f64, rx2: ndarray_f64, t: ndarray_f64) -> ndarray_f64:

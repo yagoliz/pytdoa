@@ -29,7 +29,7 @@ def lls(positions, tdoas):
 
     (A, b) = getMatrices(positions, tdoas)
     result = np.linalg.lstsq(A, b)[0]
-    return (result[1].real, result[2].real)
+    return np.append(result[1].real, result[2].real).reshape((1,-1))
 
 
 def getMatrices(positions, tdoas):
