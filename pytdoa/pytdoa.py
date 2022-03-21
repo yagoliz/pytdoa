@@ -130,10 +130,12 @@ def linoptim(sensors, tdoas):
 
     if sensors.shape[0] > 3:
         res = lls.lls(sensors_xyz, tdoas)
+        if res.shape[0] > 1:
+            logger.warning("Multiple solutions")
     else:
         res = exact.fang(sensors_xyz, tdoas)
 
-    return geodesy.xy2latlon(res[0], res[1], reference_c[0], reference_c[1]).squeeze()
+    return geodesy.xy2latlon(res[:,0], res[:,1], reference_c[0], reference_c[1]).squeeze()
 
 
 def brutefoptim(
@@ -397,9 +399,13 @@ def pytdoa(config):
         target_linear = linoptim(sensors, tdoa_list[:NUM_SENSORS-1])
         result["res_linear"] = target_linear
 
-        altitude = np.mean(sensors["height"].to_numpy())
-        target = nonlinoptim(sensors, tdoa_list, combination_list, llh=np.append(target_linear,altitude))
+        target = np.empty((target_linear.shape[0],3))
+        for i in range(target_linear.shape[0]):
+            altitude = np.mean(sensors["height"].to_numpy())
+            target[i,:] = nonlinoptim(sensors, tdoa_list, combination_list, llh=np.append(target_linear[i,:],altitude))
+        
         result["res_accurate"] = target
+
     else:
         raise RuntimeError("Unsupported optimization method")
 

@@ -95,8 +95,10 @@ if __name__ == "__main__":
     
     # Linear estimation
     if result["res_linear"].any():
-        logger.info(f'Result (linear): {result["res_linear"][0]:.5f},{result["res_linear"][1]:.5f}')
+        for i in range(result["res_linear"].shape[0]):
+            logger.info(f'Result {i} (linear): {result["res_linear"][i,0]:.5f},{result["res_linear"][i,1]:.5f}')
 
     # Non-Linear estimation
     if result["res_accurate"].any():
-        logger.info(f'Result (nonlin): {result["res_accurate"][0]:.5f},{result["res_accurate"][1]:.5f}')
+        for i in range(result["res_linear"].shape[0]):
+            logger.info(f'Result {i} (nonlin): {result["res_accurate"][i,0]:.5f},{result["res_accurate"][i,1]:.5f}')
