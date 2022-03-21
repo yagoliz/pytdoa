@@ -35,13 +35,15 @@ from pytdoa.ltess import ltess
 from pytdoa.mlat import exact, lls, nlls
 from pytdoa.spec_load import spec_load
 from pytdoa.tdoa import tdoa
+from pytdoa.util import generate_heatmap, generate_hyperbola
+
+from pytdoa.geodesy.geodesy import SPEED_OF_LIGHT, latlon2xy
 
 logger = logging.getLogger("PYTDOA")
 
+
 ################################################################################
 # PYTDOA functions
-
-
 def correct_fo(signal, PPM, fRS, fUS, samplingRate=2e6):
     """
     Correct frequency offset of IQ signal
@@ -208,13 +210,15 @@ def brutefoptim(
     return Xr
 
 
-def nonlinoptim(sensors, tdoas, combinations):
+def nonlinoptim(sensors, tdoas, combinations, llh=None):
     """
     Obtain the position by non linear methods
 
     Parameters:
     sensors: DataFrame with 'latitude', 'longitude', 'height' parameters
     tdoas: array of tdoa values of shape(n-1,1)
+    combinations: array with combinations per sensor
+    LLH0: Initial guess for latitude, longitude and altitude
 
     Returns:
     np.array([lat,lon, height]) with the resulting latitude and longitude
@@ -229,7 +233,11 @@ def nonlinoptim(sensors, tdoas, combinations):
     optimfun = lambda X: nlls.nlls(X, sensors_ecef, tdoas, combinations)
 
     # Minimization routine
-    X0 = np.zeros(shape=(3, 1))
+    # If no initial point is given we start at the center
+    if llh is None:
+        X0 = np.zeros(shape=(3, 1))
+    else:
+        X0 = (geodesy.llh2ecef(llh.reshape(-1,3)) - sensors_mean).reshape(3,1)
 
     summary = optimize.minimize(optimfun, X0, method="BFGS")
 
@@ -248,6 +256,7 @@ def pytdoa(config):
     np.array(3,): latitude, longitude, altitude of the transmitter
     """
 
+    ###########################################################################
     # Load configuration
     # Unknown transmitter
     fUS_MHz = config["transmitters"]["unknown"]["freq"]
@@ -293,12 +302,13 @@ def pytdoa(config):
     # Return the accurate position from NLLS
     method = config["config"].get("method", "linear")
 
-    # Arrays to hold important things
-    distances_rs = np.empty(0)
+    # Additional calculations
+    add_heatmap = config["config"].get("generate_heatmap", False)
+    add_hyperbola = config["config"].get("generate_hyperbola", False)
 
+    ###########################################################################
+    # Get and correct the samples per sensor
     # Load data and prepare it
-    sensors_ecef = np.empty(0)
-    sensors_llh = np.empty(0)
     samples = {}
     for (i, sensor) in sensors.iterrows():
         # Computing the distance to the Ref tX
@@ -330,6 +340,7 @@ def pytdoa(config):
         else:
             samples[sname] = tdoa_iq
 
+    ###########################################################################
     # Get combinations and compute TDOAs per pair
     combinations = itertools.combinations(np.arange(len(sensors)), 2)
 
@@ -358,17 +369,81 @@ def pytdoa(config):
         )
         tdoa_list = np.append(tdoa_list, [tdoa_ij["tdoa_m_i"]])
 
+    ###########################################################################
     # Optimization part
+    # There are several options to perform the optimization
+    result = {}
+    result["linear"] = np.empty((0))
+    result["accurate"] = np.empty((0))
+
+    # "linear": will perform only optimization using either the exact solution or LLS
     if method == "linear":
-        result = linoptim(sensors, tdoa_list[: NUM_SENSORS - 1])
+        target = linoptim(sensors, tdoa_list[:NUM_SENSORS-1])
+        result["linear"] = target
 
+    # "brute": will use brute force to estimate the solution
     elif method == "brute":
-        result = brutefoptim(sensors, tdoa_list, combination_list)
+        target = brutefoptim(sensors, tdoa_list, combination_list)
+        result["accurate"] = target
 
+    # "nonlinear": will use NLLS to estimate the solution
     elif method == "nonlinear":
-        result = nonlinoptim(sensors, tdoa_list, combination_list)
+        target = nonlinoptim(sensors, tdoa_list, combination_list)
+        result["accurate"] = target
+    
+    # "both": will first obtain an initial solution using linear methods and
+    #         then will perform NLLS with the starting point given before
+    elif method == "both":
+        target_linear = linoptim(sensors, tdoa_list[:NUM_SENSORS-1])
+        result["res_linear"] = target_linear
 
+        altitude = np.mean(sensors["height"].to_numpy())
+        target = nonlinoptim(sensors, tdoa_list, combination_list, llh=np.append(target_linear,altitude))
+        result["res_accurate"] = target
     else:
         raise RuntimeError("Unsupported optimization method")
 
-    return np.array([result[0], result[1]])
+    ###########################################################################
+    # Additional calculations like heatmap and hyperbolas
+    rxs_llh = sensors[["latitude","longitude","height"]].to_numpy()
+    ref_llh = np.mean(rxs_llh, axis=0)
+
+    rxs_xyz = geodesy.latlon2xy(rxs_llh[:,0], rxs_llh[:,1], ref_llh[0], ref_llh[1])
+
+    # Heatmap calculation
+    if add_heatmap:
+        xlim = 2000
+        ylim = 2000
+        target_xy = geodesy.latlon2xy(target[0], target[1], ref_llh[0], ref_llh[1])
+        xrange = (target_xy[0,0]-xlim, target_xy[0,0]+xlim)
+        yrange = (target_xy[0,1]-ylim, target_xy[0,1]+ylim)
+        heatmap = generate_heatmap(tdoa_list, rxs_xyz, xrange, yrange, combination_list, step=10.0)
+
+        cal_llh = geodesy.xy2latlon(heatmap[0], heatmap[1], ref_llh[0], ref_llh[1])
+
+        result["hm"] = np.hstack((cal_llh, heatmap[2].reshape(-1,1)))
+    else:
+        result["hm"] = np.empty((0))
+
+    # Hyperbola calculation
+    if add_hyperbola:
+        t = np.arange(0,2,0.001)
+        hyperbolas = np.zeros((2*(NUM_SENSORS-1), len(t)*4))
+        perturbation = 0.5 / sr_tdoa / interpol * SPEED_OF_LIGHT
+        for i in range(NUM_SENSORS-1):
+            si = combination_list[i,0]
+            sj = combination_list[i,1]
+            hyperbola_1 = generate_hyperbola(tdoa_list[i]+perturbation,rxs_xyz[si,:], rxs_xyz[sj,:], t)
+            hyperbola_2 = generate_hyperbola(tdoa_list[i]-perturbation,rxs_xyz[si,:], rxs_xyz[sj,:], t)
+            hyperbola_c = np.hstack((hyperbola_1, np.fliplr(hyperbola_2)))
+            hyperbola_llh = geodesy.xy2latlon(hyperbola_c[0,:], hyperbola_c[1,:], ref_llh[0], ref_llh[1])
+            hyperbolas[2*i:2*(i+1),:] = hyperbola_llh.T
+
+        result["hyperbolas"] = hyperbolas
+
+    else:
+        result["hyperbolas"] = np.emtpy((0))
+
+    
+    return result
+

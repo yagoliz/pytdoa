@@ -91,5 +91,12 @@ if __name__ == "__main__":
     configure_logger(filename=args.logging_config, level=args.logging_level)
 
     # Position estimation
-    position = pytdoa(config)
-    logger.info(f"Result: {position.tolist()}")
+    result = pytdoa(config)
+    
+    # Linear estimation
+    if result["res_linear"].any():
+        logger.info(f'Result (linear): {result["res_linear"][0]:.5f},{result["res_linear"][1]:.5f}')
+
+    # Non-Linear estimation
+    if result["res_accurate"].any():
+        logger.info(f'Result (nonlin): {result["res_accurate"][0]:.5f},{result["res_accurate"][1]:.5f}')

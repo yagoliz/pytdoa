@@ -26,45 +26,43 @@ import numpy.typing as npt
 logger = logging.getLogger("UTIL")
 
 # Typing alias for better linting
-Vec_f = npt.NDArray[np.float64]
-Vec_i = npt.NDArray[np.int64]
+ndarray_f64 = npt.NDArray[np.float64]
+ndarray_i64 = npt.NDArray[np.int64]
 
 
-def mse(x: Vec_f, y: Vec_f, tdoas: Vec_f, rx: Vec_f, si: Vec_i, sj: Vec_i) -> Vec_f:
+def mse(x: ndarray_f64, y: ndarray_f64, tdoas: ndarray_f64, rx: ndarray_f64, si: ndarray_i64, sj: ndarray_i64) -> ndarray_f64:
     """
     Helper function to evaluate the tdoa cost function at a given x, y vector pair
     """
-
-    x = x.flatten()
-    y = y.flatten()
 
     N = x.shape[0]
     M = rx.shape[0]
 
     # Prepare the x, y points
-    P = np.hstack((x.flatten(), y.flatten()))
+    P = np.vstack((x, y)).T
     P = np.reshape(P, (-1, 2, 1))
     P = np.repeat(P, M, axis=2)
 
     #  Prepare the Receiver matrix
-    Rx = rx.reshape(rx, (1, 2, -1))
+    Rx = rx.T.reshape((1,2,-1))
     Rx = np.repeat(Rx, N, axis=0)
 
     # Calculate distances between all points and Receivers
-    drx = np.sqrt(np.sum(np.square(P - Rx)), axis=1).squeeze()
+    drx = np.sqrt(np.sum(np.square(P - Rx), axis=1)).squeeze()
     doa = drx[:,si] - drx[:,sj]
 
     return np.sum(np.square(tdoas.reshape(1,-1) - doa), axis=1)
 
 
 def generate_heatmap(
-    tdoas: Vec_f,
-    rx: Vec_f,
-    xrange: Tuple(float, float),
-    yrange: Tuple(float, float),
-    combinations: Vec_i,
-    step: Union(float, Tuple(float, float)),
-) -> Tuple(Vec_f, Vec_f, Vec_f):
+    tdoas: ndarray_f64,
+    rx: ndarray_f64,
+    xrange: Tuple[float, float],
+    yrange: Tuple[float, float],
+    combinations: ndarray_i64,
+    step: Union[float, Tuple[float, float]] = 10.0,
+    threshold: float = 0.1
+) -> Tuple[ndarray_f64, ndarray_f64, ndarray_f64]:
     """
     Function that calculates the heatmap of the a given cost function
 
@@ -74,7 +72,7 @@ def generate_heatmap(
     xrange: tuple with (xmin, xmax) values to evaluate the cost function at
     yrange: tuple with (ymin, ymax) values to evaluate the cost function at
     combinations: np.array (N,2) with sensor combinations for each of the tdoa values
-    resolution: single float or tuple of floats with the x and y resolutions
+    step: single float or tuple of floats with the x and y resolutions
 
     Returns:
     np.array(M,M) with the cost function evaluated on the grid defined by xrange, yrange &
@@ -82,12 +80,12 @@ def generate_heatmap(
     """
 
     # Preparing the mesh to evaluate the function at
-    if len(step) == 1:
-        xstep = step
-        ystep = step
-    else:
+    if step is tuple:
         xstep = step[0]
         ystep = step[1]
+    else:
+        xstep = step
+        ystep = step
 
     xmin, xmax = xrange
     ymin, ymax = yrange
@@ -96,23 +94,31 @@ def generate_heatmap(
     yvalues = np.linspace(ymin, ymax, round((ymax - ymin) / ystep))
 
     xmesh, ymesh = np.meshgrid(xvalues, yvalues)
+    x = xmesh.flatten()
+    y = ymesh.flatten()
 
     # We need to get the sensors involved in each combination
-    si: Vec_i = combinations[:, 0]
-    sj: Vec_i = combinations[:, 1]
+    si: ndarray_i64 = combinations[:, 0]
+    sj: ndarray_i64 = combinations[:, 1]
 
     msefun = lambda x, y: mse(x, y, tdoas, rx, si, sj)
 
     # Core
     logger.info("Creating heatmap")
-    Z = 1 / msefun(xmesh, ymesh)
+    Z = 1 / msefun(x, y)
     Z = Z / np.max(Z)
     logger.info(f"Heatmap generated with {len(Z)} points")
 
-    return (xvalues, yvalues, Z)
+    # Remove values below threshold
+    idx = Z > threshold
+    x = x[idx]
+    y = y[idx]
+    Z = Z[idx]
+
+    return (x, y, Z)
 
 
-def generate_hyperbola(tdoa: Vec_f, rx1: Vec_f, rx2: Vec_f, t: Vec_f) -> Vec_f:
+def generate_hyperbola(tdoa: ndarray_f64, rx1: ndarray_f64, rx2: ndarray_f64, t: ndarray_f64) -> ndarray_f64:
     """
     Function that calculates the hyperbola between 2 receivers given a TDOA value.
 
@@ -141,14 +147,14 @@ def generate_hyperbola(tdoa: Vec_f, rx1: Vec_f, rx2: Vec_f, t: Vec_f) -> Vec_f:
     center = (rx2 + rx1) / 2
     theta = np.arctan2((rx2[1] - rx1[1]), (rx2[0] - rx1[0]))
 
-    R = np.array([[np.cos(theta, -np.sin(theta))], [np.sin(theta), np.cos(theta)]])
+    R = np.array([[np.cos(theta), -np.sin(theta)], [np.sin(theta), np.cos(theta)]])
     a = tdoa / 2
     b = np.sqrt(c**2 - a**2)
 
     xpoints = a * np.cosh(t)
     ypoints = b * np.sinh(t)
 
-    X_canonical = np.array([[np.flip(xpoints), xpoints], [-np.flip(ypoints), ypoints]])
-    hyp = R @ X_canonical + center.T
+    X_canonical = np.vstack((np.append(np.flip(xpoints), xpoints), np.append(-np.flip(ypoints), ypoints)))
+    hyp = R @ X_canonical + center.reshape((-1,1))
 
     return hyp

@@ -25,6 +25,8 @@
         "corr_type": "abs",
         "interpol": 1,
         "folder": "",
-        "filenum": 1
+        "filenum": 1,
+        "generate_heatmap": true,
+        "generate_hyperbola": true
     }
 }
