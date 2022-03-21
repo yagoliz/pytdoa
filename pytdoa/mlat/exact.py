@@ -60,7 +60,7 @@ def fang(positions, tdoas):
     # We extract the values for g and h
     g = ((tdoas[1] / tdoas[0]) * b - cx) / cy
     h = (
-        c**2 - tdoas[1] ** 2 + tdoas[0] * tdoas[1] * (1 - (b / tdoas[0]) ** 2) ** 2
+        c**2 - tdoas[1] ** 2 + tdoas[0] * tdoas[1] * (1 - (b / tdoas[0]) ** 2)
     ) / (2 * cy)
 
     # With this we go for the terms of the quadratic equation

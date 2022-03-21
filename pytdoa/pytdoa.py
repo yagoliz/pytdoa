@@ -273,7 +273,7 @@ def pytdoa(config):
 
     # TDOA estimation
     corr_type = config["config"].get("corr_type", "dphase")
-    interpol = config["config"].get("interpol", 1)
+    interpol = config["config"].get("interp", 1)
     bw_rs = config["transmitters"]["reference"].get("bw", sr_tdoa)
     bw_us = config["transmitters"]["unknown"].get("bw", sr_tdoa)
 
