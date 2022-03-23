@@ -62,7 +62,8 @@ def generate_heatmap(
     combinations: ndarray_i64,
     step: Union[float, Tuple[float, float]] = 10.0,
     filter: bool = True,
-    threshold: float = 0.1
+    threshold: float = 0.1,
+    normalize: bool = True
 ) -> ndarray_f64:
     """
     Function that calculates the heatmap of the a given cost function
@@ -107,7 +108,8 @@ def generate_heatmap(
     # Core
     logger.info("Creating heatmap")
     Z = 1 / msefun(x, y)
-    Z = Z / np.max(Z)
+    if normalize:
+        Z = Z / np.sum(Z)
     logger.info(f"Heatmap generated with {len(Z)} points")
 
     # Remove values below threshold
