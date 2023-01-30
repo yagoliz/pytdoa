@@ -289,7 +289,7 @@ def pytdoa(config):
     bw_us = config["transmitters"]["unknown"].get("bw", sr_tdoa)
 
     # Design the filter taps for all chunks
-    taps_rs, taps_us = None, None
+    taps_rs, taps_us = np.empty((0)), np.empty((0))
     if bw_rs < sr_tdoa:
         taps_rs = tdoa.design_filt(bw_rs, sr_tdoa)
         logger.info(f"Filter for reference signal of bandwidth {bw_rs:.2f} created")
@@ -448,7 +448,7 @@ def pytdoa(config):
         result["hyperbolas"] = hyperbolas
 
     else:
-        result["hyperbolas"] = np.emtpy((0))
+        result["hyperbolas"] = np.empty((0))
 
     
     return result

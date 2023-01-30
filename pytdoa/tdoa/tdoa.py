@@ -132,7 +132,7 @@ def tdoa(
 
     # Filtering
     # Reference signals
-    if taps_rs != None:
+    if taps_rs.any():
         s11 = filter_iq(s11, taps_rs)
         s13 = filter_iq(s13, taps_rs)
 
@@ -144,7 +144,7 @@ def tdoa(
         logger.info("No filter applied to reference signals")
 
     # Target frequency
-    if taps_us != None:
+    if taps_us.any():
         s12 = filter_iq(s12, taps_us)
         s22 = filter_iq(s22, taps_us)
 
