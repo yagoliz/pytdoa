@@ -35,12 +35,38 @@ def nlls(X, positions, tdoas, combinations):
     si = combinations[:, 0]
     sj = combinations[:, 1]
 
-    t = d[si] - d[sj]
+    t = (d[si] - d[sj]).reshape(-1,1)
 
-    err = np.square(tdoas - t)
-    F = np.sum(err)
+    err_sq = np.square(tdoas - t)
+    F = .5 * np.sum(err_sq)
 
     return F
+
+
+def nlls_der(X, positions, tdoas, combinations):
+    """
+    Jacobian computation for TDOA problems using Non-Linear Least 
+    Squares
+    ---
+    """
+
+    # Compute all distances to the sensor
+    n = positions.shape[1]
+    d = geodesy.ecef_distance(positions, X)
+
+    si = combinations[:, 0]
+    sj = combinations[:, 1]
+
+    t = (d[si] - d[sj]).reshape(-1,1)
+
+    err = t-tdoas
+
+    J = np.array([0.0,0.0])
+    for i in range(n):
+        Jij = err * ((X[i]-positions[si,i])/(d[si]+1e-3) - (X[i]-positions[sj,i])/(d[sj]+1e-3)).reshape(-1,1)
+        J[i] = np.sum(Jij)
+
+    return J
 
 
 def nlls_llh(X, height, positions, positions_mean, tdoas, combinations):
@@ -60,9 +86,9 @@ def nlls_llh(X, height, positions, positions_mean, tdoas, combinations):
     si = combinations[:, 0]
     sj = combinations[:, 1]
 
-    t = d[si] - d[sj]
+    t = (d[si] - d[sj]).reshape(-1,1)
 
-    err = np.square(tdoas - t)
-    F = np.sum(err)
+    err_sq = np.square(tdoas - t)
+    F = .5 * np.sum(err_sq)
 
     return F

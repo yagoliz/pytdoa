@@ -69,15 +69,19 @@ def fang(positions, tdoas):
     f = tdoas[0] ** 2 / 4 * (1 - (b / tdoas[0]) ** 2) ** 2 - h**2
 
     # Terms for x and y (positions)
-    xp = (-e + np.sqrt(e**2 - 4 * d * f)) / (2 * d)
-    yp = g * xp + h
+    discriminant = e**2 - 4 * d * f
+    if discriminant >= 0:
+        xp = (-e + np.sqrt(discriminant)) / (2 * d)
+        yp = g * xp + h
 
-    xm = (-e - np.sqrt(e**2 - 4 * d * f)) / (2 * d)
-    ym = g * xm + h
+        xm = (-e - np.sqrt(discriminant)) / (2 * d)
+        ym = g * xm + h
+    else:
+        return np.array([[np.nan, np.nan]])
 
     # Conversion to absolute coordinates
     # For the positive result
-    rp = R @ np.array([[xp], [yp]])
+    rp = R @ np.array([xp, yp])
     rpt = rp + s1
 
     rpt_real = rpt.real
@@ -89,7 +93,7 @@ def fang(positions, tdoas):
         y = np.append(y, rpt_real[1])
 
     # For the negative result
-    rm = R @ np.array([[xm], [ym]])
+    rm = R @ np.array([xm, ym])
     rmt = rm + s1
 
     rmt_real = rmt.real

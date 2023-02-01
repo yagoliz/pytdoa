@@ -37,7 +37,7 @@ from pytdoa.spec_load import spec_load
 from pytdoa.tdoa import tdoa
 from pytdoa.util import generate_heatmap, generate_hyperbola
 
-from pytdoa.geodesy.geodesy import SPEED_OF_LIGHT, latlon2xy
+from pytdoa.geodesy.geodesy import SPEED_OF_LIGHT
 
 logger = logging.getLogger("PYTDOA")
 
@@ -109,82 +109,104 @@ def correct_fo_ltess(signal, PPM, fS=806e6, samplingRate=1.92e6):
     return resample(signal, up)
 
 
-def linoptim(sensors, tdoas):
+def linoptim(sensors, tdoas, input_type="llh"):
     """
     Obtain the position by linear methods
 
     Parameters:
-    sensors: DataFrame with 'latitude', 'longitude', 'height' parameters
+    sensors: DataFrame with 'latitude','longitude','height' or 'x','y','z' parameters
     tdoas: array of tdoa values of shape(n-1,1)
+    input_type: How positions are represented ([llh | xyz])
 
     Returns:
     np.array([lat,lon]) with the resulting latitude and longitude
     """
 
-    sensors_llh = sensors[["latitude", "longitude", "height"]].to_numpy()
-    reference_c = np.mean(sensors_llh, axis=0)
+    if input_type == "llh":
+        sensors_llh = sensors[["latitude", "longitude", "height"]].to_numpy()
+        reference_c = np.mean(sensors_llh, axis=0)
 
-    sensors_xyz = geodesy.latlon2xy(
-        sensors_llh[:, 0], sensors_llh[:, 1], reference_c[0], reference_c[1]
-    )
+        sensors_xyz = geodesy.latlon2xy(
+            sensors_llh[:, 0], sensors_llh[:, 1], reference_c[0], reference_c[1]
+        )
+    elif input_type == "xyz":
+        sensors_xyz = sensors[["x", "y"]].to_numpy()
+    else:
+        RuntimeError("Unsupported input type. Supported types are: [llh | xyz]")
 
     if sensors.shape[0] > 3:
         res = lls.lls(sensors_xyz, tdoas)
-        if res.shape[0] > 1:
-            logger.warning("Multiple solutions")
     else:
         res = exact.fang(sensors_xyz, tdoas)
 
-    return geodesy.xy2latlon(res[:,0], res[:,1], reference_c[0], reference_c[1]).squeeze()
+    if res.shape[0] > 1:
+        logger.warning("Multiple solutions")
+        res = res[0,:]
+
+    if input_type == "llh":
+        return geodesy.xy2latlon(res[:,0], res[:,1], reference_c[0], reference_c[1]).squeeze()
+    else:
+        return res
 
 
 def brutefoptim(
     sensors,
     tdoas,
     combinations,
-    ltrange=2,
-    lnrange=2,
-    step=0.05,
+    xrange=200,
+    yrange=200,
+    step=5,
     epsilon=1e-4,
     maxiter=10,
     workers=1,
+    input_type="llh",
+    num_dim=3
 ):
     """
     Obtain the position by brute force
 
     Parameters:
-    sensors: DataFrame with 'latitude', 'longitude', 'height' parameters
+    sensors: DataFrame with 'latitude','longitude','height' or 'x','y','z' parameters
     tdoas: array of tdoa values of shape(n-1,1)
     combinations: list with sensor combinations when computing tdoa pairs
+    input_type: How positions are represented ([llh | xyz])
+    num_dim: How many dimensions (2D/3D positioning)
 
     Returns:
     np.array([lat,lon, height]) with the resulting latitude and longitude
     """
 
-    sensors_llh = sensors[["latitude", "longitude", "height"]].to_numpy()
-    X0 = np.mean(sensors_llh, axis=0)
-    altitude = X0[2]
+    if input_type == "llh":
+        sensors_llh = sensors[["latitude", "longitude", "height"]].to_numpy()
 
-    sensors_ecef = geodesy.llh2ecef(
-        sensors[["latitude", "longitude", "height"]].to_numpy()
-    )
-    sensors_mean = np.mean(sensors_ecef, axis=0)
+        sensors_xyz = geodesy.llh2ecef(
+            sensors[["latitude", "longitude", "height"]].to_numpy()
+        )
+    elif input_type == "xyz":
+        if num_dim == 3:
+            sensors_xyz = sensors[["x", "y", "z"]].to_numpy()
+        elif num_dim == 2:
+            sensors_xyz = sensors[["x","y"]].to_numpy()
+    else:
+        RuntimeError("Unsupported input type. Supported types are: [llh | xyz]")
 
-    optimfun = lambda X: nlls.nlls_llh(
-        X, altitude, sensors_ecef - sensors_mean, sensors_mean, tdoas, combinations
+    X0 = np.mean(sensors_xyz, axis=0)
+
+    optimfun = lambda X: nlls.nlls(
+        X, sensors_xyz, tdoas, combinations
     )
 
     Xr = np.array([X0[0], X0[1]])
     F_prev = None
-    lt = ltrange
-    ln = lnrange
+    x = xrange
+    y = yrange
     st = step
-    Ns = int(2 * ltrange / step)
+    Ns = int(2 * xrange / step)
     for i in range(maxiter):
-        llrange = (slice(Xr[0] - lt, Xr[0] + lt, st), slice(Xr[1] - ln, Xr[1] + ln, st))
+        xyrange = (slice(Xr[0] - x, Xr[0] + x, st), slice(Xr[1] - y, Xr[1] + y, st))
 
         summary = optimize.brute(
-            optimfun, llrange, full_output=True, finish=None, workers=workers
+            optimfun, xyrange, full_output=True, finish=None, workers=workers
         )
 
         # We update all the values for the next iteration
@@ -192,9 +214,9 @@ def brutefoptim(
             Xr = summary[0]
             F_prev = summary[1]
 
-            lt = lt * 0.1
-            ln = ln * 0.1
-            st = 2 * lt / Ns
+            x = x * 0.1
+            y = y * 0.1
+            st = 2 * x / Ns
         else:
             Xr = summary[0]
             F = summary[1]
@@ -204,48 +226,74 @@ def brutefoptim(
 
             F_prev = F
 
-            lt = lt * 0.1
-            ln = ln * 0.1
-            st = 2 * lt / Ns
+            x = x * 0.1
+            y = y * 0.1
+            st = 2 * x / Ns
 
     logger.warning("Reached maximum number of iterations")
     return Xr
 
 
-def nonlinoptim(sensors, tdoas, combinations, llh=None):
+def nonlinoptim(sensors, tdoas, combinations, num_dim=3, p0=None, input_type="llh", method="BFGS"):
     """
     Obtain the position by non linear methods
 
     Parameters:
-    sensors: DataFrame with 'latitude', 'longitude', 'height' parameters
+    sensors: DataFrame with 'latitude', 'longitude', 'height' parameters or 'x', 'y', 'z'
     tdoas: array of tdoa values of shape(n-1,1)
     combinations: array with combinations per sensor
-    LLH0: Initial guess for latitude, longitude and altitude
+    num_dim: Number of dimensions (2/3)
+    p0: Initial guess for starting position
+    input_type: How positions are represented ([llh | xyz])
+    method: Method for minimization
 
     Returns:
     np.array([lat,lon, height]) with the resulting latitude and longitude
     """
 
-    sensors_ecef = geodesy.llh2ecef(
-        sensors[["latitude", "longitude", "height"]].to_numpy()
-    )
-    sensors_mean = np.mean(sensors_ecef, axis=0)
+    if input_type == "llh":
+        sensors_xyz = geodesy.llh2ecef(
+            sensors[["latitude", "longitude", "height"]].to_numpy()
+        )
+        sensors_mean = np.mean(sensors_xyz, axis=0)
 
-    sensors_ecef = sensors_ecef - sensors_mean
-    optimfun = lambda X: nlls.nlls(X, sensors_ecef, tdoas, combinations)
+        sensors_xyz = sensors_xyz - sensors_mean
+        optimfun = lambda X: nlls.nlls(X, sensors_xyz, tdoas, combinations)
 
-    # Minimization routine
-    # If no initial point is given we start at the center
-    if llh is None:
-        X0 = np.zeros(shape=(3, 1))
+        # Minimization routine
+        # If no initial point is given we start at the center
+        if p0 is None:
+            X0 = np.zeros(shape=(num_dim, 1))
+        else:
+            X0 = (geodesy.llh2ecef(p0.reshape(-1,num_dim)) - sensors_mean).reshape(num_dim,1)
+
+        jac = lambda X: nlls.nlls_der(X, sensors_xyz, tdoas, combinations)
+        summary = optimize.minimize(optimfun, X0, method=method, jac=jac)
+
+        res = np.array(summary.x, copy=False).reshape(-1, 3)
+        return geodesy.ecef2llh(res + sensors_mean).squeeze()
+
+    elif input_type == "xyz":
+        if num_dim == 3:
+            sensors_xyz = sensors[["x","y","z"]].to_numpy()
+
+        elif num_dim == 2:
+            sensors_xyz = sensors[["x","y"]].to_numpy()
+
+        if p0 is None:
+            X0 = np.zeros(shape=(num_dim, 1))
+        else:
+            X0 = p0
+
+        optimfun = lambda X: nlls.nlls(X, sensors_xyz, tdoas, combinations)
+        jac = lambda X: nlls.nlls_der(X, sensors_xyz, tdoas, combinations)
+        summary = optimize.minimize(optimfun, X0, method=method, jac=jac)
+
+        res = np.array(summary.x, copy=False).reshape(-1, num_dim)
+        return res
+
     else:
-        X0 = (geodesy.llh2ecef(llh.reshape(-1,3)) - sensors_mean).reshape(3,1)
-
-    summary = optimize.minimize(optimfun, X0, method="BFGS")
-
-    res = np.array(summary.x, copy=False).reshape(-1, 3)
-    return geodesy.ecef2llh(res + sensors_mean).squeeze()
-
+        RuntimeError("Unsupported input type. Supported types are: [llh | xyz]")
 
 def pytdoa(config):
     """

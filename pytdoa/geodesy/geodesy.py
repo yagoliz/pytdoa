@@ -63,14 +63,14 @@ def dist3fromllh(llh0, llh1):
 
 def ecef_distance(p0, p1):
     """
-    3D distance from ECEF coordinates
+    Distance from ECEF/Euclidean (XYZ) coordinates
 
     Parameters:
-    p0: numpy array of shape(N,3)
-    p1: numpy array of shape(N,3)
+    p0: numpy array of shape(N,num_dim)
+    p1: numpy array of shape(N,num_dim)
 
     Returns:
-    np.array(N,3): 3D distance
+    np.array(N,num_dim): 2D,3D distance
     """
 
     return np.sqrt(np.sum((p0 - p1) ** 2, axis=1))
