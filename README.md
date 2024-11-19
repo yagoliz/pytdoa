@@ -13,3 +13,17 @@ What `pytdoa` expects is a set of of raw iq signals belonging to a set of receiv
 ```
 
 We need the `Ref Signal` to be able to align samples. The last chunk can be also used to estimate the drift of the receiver over the whole sampling process. It is also **critical** that when switching frequencies, no samples were lost, otherwise this methodology cannot be applied.
+
+## Citing
+If you use this software please consider citing us:
+
+```bibtex
+@inproceedings{lizarribar2024oran,
+  title={ORAN-Sense: Localizing Non-cooperative Transmitters with Spectrum Sensing and 5G O-RAN},
+  author={Lizarribar, Yago and Calvo-Palomino, Roberto and Scalingi, Alessio and Santaromita, Giuseppe and Bovet, G{\'e}r{\^o}me and Giustiniano, Domenico},
+  booktitle={IEEE INFOCOM 2024-IEEE Conference on Computer Communications},
+  pages={1870--1879},
+  year={2024},
+  organization={IEEE}
+}
+```
